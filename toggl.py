@@ -55,7 +55,7 @@ def add_time_entry(args):
     
     # See if we have a @project.
     if len(args) == 2:
-	project_name = find_project(args[0][1:])
+        project_name = find_project(args[0][1:])
         args = args[1:] # strip off the project
     
     # Get the duration.
@@ -66,6 +66,7 @@ def add_time_entry(args):
     if data == None:
         return 1
     
+    data['ignore_start_and_stop'] = True
     if options.verbose:
         print json.dumps(data)
     
@@ -117,35 +118,35 @@ def create_time_entry_json(description, project_name=None, duration=0):
     return data
 
 def elapsed_time(seconds, suffixes=['y','w','d','h','m','s'], add_s=False, separator=' '):
-	"""
-	Takes an amount of seconds and turns it into a human-readable amount of time.
-	From http://snipplr.com/view.php?codeview&id=5713
-	"""
-	# the formatted time string to be returned
-	time = []
-	
-	# the pieces of time to iterate over (days, hours, minutes, etc)
-	# - the first piece in each tuple is the suffix (d, h, w)
-	# - the second piece is the length in seconds (a day is 60s * 60m * 24h)
-	parts = [(suffixes[0], 60 * 60 * 24 * 7 * 52),
-		  (suffixes[1], 60 * 60 * 24 * 7),
-		  (suffixes[2], 60 * 60 * 24),
-		  (suffixes[3], 60 * 60),
-		  (suffixes[4], 60),
-		  (suffixes[5], 1)]
-	
-	# for each time piece, grab the value and remaining seconds, and add it to
-	# the time string
-	for suffix, length in parts:
-		value = seconds / length
-		if value > 0:
-			seconds = seconds % length
-			time.append('%s%s' % (str(value),
-					       (suffix, (suffix, suffix + 's')[value > 1])[add_s]))
-		if seconds < 1:
-			break
-	
-	return separator.join(time)
+    """
+    Takes an amount of seconds and turns it into a human-readable amount of time.
+    From http://snipplr.com/view.php?codeview&id=5713
+    """
+    # the formatted time string to be returned
+    time = []
+
+    # the pieces of time to iterate over (days, hours, minutes, etc)
+    # - the first piece in each tuple is the suffix (d, h, w)
+    # - the second piece is the length in seconds (a day is 60s * 60m * 24h)
+    parts = [(suffixes[0], 60 * 60 * 24 * 7 * 52),
+          (suffixes[1], 60 * 60 * 24 * 7),
+          (suffixes[2], 60 * 60 * 24),
+          (suffixes[3], 60 * 60),
+          (suffixes[4], 60),
+          (suffixes[5], 1)]
+    
+    # for each time piece, grab the value and remaining seconds, and add it to
+    # the time string
+    for suffix, length in parts:
+        value = seconds / length
+        if value > 0:
+            seconds = seconds % length
+            time.append('%s%s' % (str(value),
+                           (suffix, (suffix, suffix + 's')[value > 1])[add_s]))
+        if seconds < 1:
+            break
+    
+    return separator.join(time)
 
 def get_current_time_entry():
     """Returns the current time entry JSON object, or None."""
@@ -211,36 +212,60 @@ def find_project(proj):
     response = get_projects()
     for project in response['data']:
         if project['name'].startswith(proj):
-		return project['name']
+            return project['name']
     print "Could not find project!"
     sys.exit(1)
 
+def list_time_entries_date(response):
+    # Sort the time entries into buckets based on "Month Day" of the entry.
+    days = { }
+    for entry in response['data']:
+        start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc).strftime("%b %d")
+        if start_time not in days:
+            days[start_time] = []
+        days[start_time].append(entry)
+
+    # For each day, print the entries, then sum the times.
+    for date in sorted(days.keys()):
+        print date
+        duration = 0
+        for entry in days[date]:
+            print "  ",
+            duration += print_time_entry(entry)
+        print "   (%s)" % elapsed_time(int(duration))
+
+    return 0
+
+def list_time_entries_project(response):
+    projs = { }
+    for entry in response['data']:
+        proj = entry["project"]['name']
+        if proj not in projs:
+            projs[proj] = []
+        projs[proj].append(entry)
+    
+    for proj in projs.keys():
+        print "@" + proj
+        duration = 0
+        for entry in projs[proj]:
+            print "  ",
+            duration += print_time_entry(entry, show_proj=False)
+        print "   (%s)" % elapsed_time(duration)
+
+    return 0
+
 def list_time_entries():
-	"""Lists all of the time entries from yesterday and today along with
-	   the amount of time devoted to each.
-	"""
+    """Lists all of the time entries from yesterday and today along with
+       the amount of time devoted to each.
+    """
 
-	# Get an array of objects of recent time data.
-	response = get_time_entry_data()
+    # Get an array of objects of recent time data.
+    response = get_time_entry_data()
 
-	# Sort the time entries into buckets based on "Month Day" of the entry.
-	days = { }
-	for entry in response['data']:
-		start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc).strftime("%b %d")
-		if start_time not in days:
-			days[start_time] = []
-		days[start_time].append(entry)
-
-	# For each day, print the entries, then sum the times.
-	for date in sorted(days.keys()):
-		print date
-		duration = 0
-		for entry in days[date]:
-			print "  ",
-			duration += print_time_entry(entry)
-		print "   (%s)" % elapsed_time(int(duration))
-
-	return 0
+    if options.project_sort:
+        list_time_entries_project(response)
+    else:
+        list_time_entries_date(response)
 
 def parse_duration(str):
     """Parses a string of the form [[Hours:]Minutes:]Seconds and returns
@@ -258,9 +283,9 @@ def parse_duration(str):
     
     return duration
         
-def print_time_entry(entry):
+def print_time_entry(entry, show_proj=True):
     """Utility function to print a time entry object and returns the
-	   integer duration for this entry."""
+       integer duration for this entry."""
     
     # If the duration is negative, the entry is currently running so we
     # have to calculate the duration by adding the current time.
@@ -276,12 +301,16 @@ def print_time_entry(entry):
     # Get the project name (if one exists).
     project_name = ''
     if 'project' in entry:
-        project_name = " @%s" % entry['project']['name']
+        if show_proj:
+            project_name = " @%s" % entry['project']['name']
+        else:
+            start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc)
+            project_name = " %s" % start_time.date()
     
         if options.verbose:
-	    print "%s%s%s%s [%s]" % (is_running, entry['description'], project_name, e_time_str, entry['id'])
-	else:
-	    print "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
+            print "%s%s%s%s [%s]" % (is_running, entry['description'], project_name, e_time_str, entry['id'])
+        else:
+            print "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
 
     return e_time
 
@@ -296,7 +325,7 @@ def delete_time_entry(args):
     response = get_time_entry_data()
 
     for entry in response['data']:
-	if str(entry['id']) == entry_id:
+        if str(entry['id']) == entry_id:
             print "Deleting entry " + entry_id
 
             headers = {'content-type': 'application/json'}
@@ -324,15 +353,15 @@ def start_time_entry(args):
     # See if we have a @project.
     project_name = None
     if len(args) >= 1 and args[0][0] == '@':
-	project_name = find_project(args[0][1:])
+        project_name = find_project(args[0][1:])
         args = args[1:] # strip off the project
 
     # Create JSON object to send to toggl.
     data = create_time_entry_json(entry, project_name, 0)
 
     if len(args) == 1:
-	tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-	st = tz.localize(parse(args[0]))
+        tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
+        st = tz.localize(parse(args[0]))
         data['time_entry']['start'] = st.astimezone(pytz.utc).isoformat()
     
     if options.verbose:
@@ -355,8 +384,8 @@ def stop_time_entry(args=None):
         start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc)
 
         if args != None and len(args) == 1:
-	    tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-	    stop_time = tz.localize(parse(args[0])).astimezone(pytz.utc)
+            tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
+            stop_time = tz.localize(parse(args[0])).astimezone(pytz.utc)
         else:
             # Get stop time(now) in UTC.
             stop_time = datetime.datetime.now(pytz.utc)
@@ -382,7 +411,7 @@ def stop_time_entry(args=None):
     return 0
 
 def visit_web():
-	os.system(VISIT_WWW_COMMAND)	
+    os.system(VISIT_WWW_COMMAND)
 
 def create_default_cfg():
     cfg = ConfigParser.RawConfigParser()
@@ -401,9 +430,9 @@ def main(argv=None):
     global toggl_cfg
     toggl_cfg = ConfigParser.ConfigParser()
     if toggl_cfg.read(os.path.expanduser('~/.togglrc')) == []:
-	    create_default_cfg()
-	    print "Missing ~/.togglrc. A default has been created for editing."
-	    return 1
+        create_default_cfg()
+        print "Missing ~/.togglrc. A default has been created for editing."
+        return 1
 
     global AUTH, IGNORE_START_TIMES
     AUTH = (toggl_cfg.get('auth', 'username').strip(), toggl_cfg.get('auth', 'password').strip())
@@ -423,7 +452,7 @@ def main(argv=None):
         "  projects\t\t\t\tlists all projects\n"
         "  start ENTRY [@PROJECT] [DATETIME]\tstarts a new entry\n"
         "  stop [DATETIME]\t\t\tstops the current entry\n"
-	"  www\t\t\t\t\tvisits toggl.com\n"
+        "  www\t\t\t\t\tvisits toggl.com\n"
         "\n"
         "  DURATION = [[Hours:]Minutes:]Seconds\n")
     parser.add_option("-v", "--verbose",
@@ -435,6 +464,9 @@ def main(argv=None):
     parser.add_option("-n", "--no_ignore",
                         action="store_false", dest="ignore_start_and_stop", default=IGNORE_START_TIMES,
                         help="don't ignore starting and ending times")
+    parser.add_option("-p", "--project",
+            action="store_true", dest="project_sort", default=False,
+            help="sort output by project rather than date")
     (options, args) = parser.parse_args()
     
     if len(args) == 0 or args[0] == "ls":
@@ -448,17 +480,19 @@ def main(argv=None):
     elif args[0] == "start":
         return start_time_entry(args[1:])
     elif args[0] == "stop":
-	if len(args) > 1:
+        if len(args) > 1:
             return stop_time_entry(args[1:])
         else:
-	    return stop_time_entry()
+            return stop_time_entry()
     elif args[0] == "www":
         return visit_web()
     elif args[0] == "rm":
-	return delete_time_entry(args[1:])
+        return delete_time_entry(args[1:])
     else:
         parser.print_help()
         return 1
 
 if __name__ == "__main__":
-	sys.exit(main())
+    sys.exit(main())
+
+# vim: set ts=4 sw=4 tw=4 :
