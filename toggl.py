@@ -75,6 +75,48 @@ def add_time_entry(args):
     
     return 0
 
+def edit_time_entry(args):
+    """Update an existing time entry"""
+
+    if args.verbose:
+        print(args)
+    # Get an array of objects of recent time data.
+    response = get_time_entry_data()
+
+    upd_entry = None
+    for entry in response['data']:
+        if str(entry['id']) == args.id:
+            upd_entry = entry
+            break
+
+    if upd_entry == None:
+        print >> sys.stderr, "Entry %s not found" % args.id
+        return 1
+
+    proj_name = upd_entry['project']['name']
+    if hasattr(args, 'proj') and args.proj != None:
+        proj_name = find_project(args.proj)
+
+    new_ent = create_time_entry_json(upd_entry['description'],
+            proj_name, upd_entry['duration'])
+
+    if hasattr(args, 'msg') and args.msg != None:
+        new_ent['time_entry']['description'] = args.msg
+    if hasattr(args, 'duration') and args.duration != None:
+        new_ent['time_entry']['duration'] = parse_duration(args.duration)
+
+    url = "%s/time_entries/%d.json" % (TOGGL_URL, entry['id'])
+
+    if args.verbose:
+        print url
+
+    headers = {'content-type': 'application/json'}
+    r = requests.put(url, auth=AUTH, data=json.dumps(new_ent), headers=headers)
+    r.raise_for_status() # raise exception on error
+
+    return 0
+            
+
 def create_time_entry_json(description, project_name=None, duration=0):
     """Creates a basic time entry JSON from the given arguments
        project_name should not have the '@' prefix.
@@ -99,11 +141,17 @@ def create_time_entry_json(description, project_name=None, duration=0):
     if duration == 0:
         duration = 0-time.time()
     
+    start_time = datetime.datetime.utcnow().isoformat()
+    if hasattr(args, 'time'):
+        tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
+        st = tz.localize(parse(args.time))
+        start_time = st.astimezone(pytz.utc).isoformat()
+    
     # Create JSON object to send to toggl.
     data = { 'time_entry' : \
         { 'duration' : duration,
           'billable' : False,
-          'start' : datetime.datetime.utcnow().isoformat(),
+          'start' : start_time,
           'description' : description,
           'created_with' : 'toggl-cli',
           'ignore_start_and_stop' : IGNORE_START_TIMES
@@ -375,11 +423,6 @@ def start_time_entry(args):
     # Create JSON object to send to toggl.
     data = create_time_entry_json(entry, project_name, 0)
 
-    if args.time is not None:
-        tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-        st = tz.localize(parse(args.time))
-        data['time_entry']['start'] = st.astimezone(pytz.utc).isoformat()
-    
     if args.verbose:
         print json.dumps(data)
     
@@ -474,6 +517,14 @@ def main():
     parser_add.add_argument('-p', '--proj', help='Project for the log entry')
     parser_add.add_argument('-d', '--duration', help='Entry duration', required=True)
     parser_add.set_defaults(func=add_time_entry)
+
+    parser_edit = subparsers.add_parser('edit', help='Edit an existing time entry')
+    parser_edit.add_argument('-i', '--id', help='The id to edit', required=True)
+    parser_edit.add_argument('-m', '--msg', help='Log entry message')
+    parser_edit.add_argument('-p', '--proj', help='Project for the log entry')
+    parser_edit.add_argument('-d', '--duration', help='Entry duration')
+    parser_edit.add_argument('-s', '--start', help='Specify start date', default=None)
+    parser_edit.set_defaults(func=edit_time_entry)
 
     parser_now = subparsers.add_parser('now', help='Show the current time entry')
     parser_now.set_defaults(func=list_current_time_entry)
