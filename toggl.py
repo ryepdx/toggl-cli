@@ -4,6 +4,10 @@ toggl.py
 
 Created by Robert Adams on 2012-04-19.
 Last modified: Thu May 24, 2012 08:37PM
+
+Modified by Morgan Howe (mthowe@gmail.com)
+Last modified: Fri Sep 14, 2012
+
 Copyright (c) 2012 D. Robert Adams. All rights reserved.
 """
 
@@ -18,7 +22,7 @@ AUTH = ('', '')
 IGNORE_START_TIMES = False
 
 # Command to visit toggl.com
-VISIT_WWW_COMMAND = "open http://www.toggl.com"
+WWW_ADDRESS = "open http://www.toggl.com"
 
 ###                                                                       ###
 ### End of Configuration Section                                          ###
@@ -27,7 +31,6 @@ VISIT_WWW_COMMAND = "open http://www.toggl.com"
 import datetime
 import iso8601
 import json
-import optparse
 import os
 import pytz
 import requests
@@ -35,9 +38,12 @@ import sys
 import time
 import urllib
 import ConfigParser
+import argparse
 from dateutil.parser import *
 
 TOGGL_URL = "https://www.toggl.com/api/v6"
+
+args = None
 
 def add_time_entry(args):
     """
@@ -45,21 +51,13 @@ def add_time_entry(args):
     args should be: ENTRY [@PROJECT] DURATION
     """
     
-    # Make sure we have an entry description.
-    if len(args) < 2:
-        global parser
-        parser.print_help()
-        return 1
-    entry = args[0]
-    args = args[1:] # strip of the entry
+    entry = args.msg
     
-    # See if we have a @project.
-    if len(args) == 2:
-        project_name = find_project(args[0][1:])
-        args = args[1:] # strip off the project
+    if args.proj is not None:
+        project_name = find_project(args.proj)
     
     # Get the duration.
-    duration = parse_duration(args[0])
+    duration = args.duration
     
     # Create the JSON object, or die trying.
     data = create_time_entry_json(entry, project_name, duration)
@@ -67,7 +65,7 @@ def add_time_entry(args):
         return 1
     
     data['ignore_start_and_stop'] = True
-    if options.verbose:
+    if args.verbose:
         print json.dumps(data)
     
     # Send the data.
@@ -109,7 +107,7 @@ def create_time_entry_json(description, project_name=None, duration=0):
           'start' : datetime.datetime.utcnow().isoformat(),
           'description' : description,
           'created_with' : 'toggl-cli',
-          'ignore_start_and_stop' : options.ignore_start_and_stop
+          'ignore_start_and_stop' : IGNORE_START_TIMES
         }
     }
     if project_id != None:
@@ -162,8 +160,7 @@ def get_projects():
     """Fetches the projects as JSON objects."""
     
     url = "%s/projects.json" % TOGGL_URL
-    global options
-    if options.verbose:
+    if args.verbose:
         print url
     r = requests.get(url, auth=AUTH)
     r.raise_for_status() # raise exception on error
@@ -182,15 +179,14 @@ def get_time_entry_data():
     # Fetch the data or die trying.
     url = "%s/time_entries.json?start_date=%s&end_date=%s" % \
         (TOGGL_URL, urllib.quote(str(yesterday_at_midnight)), urllib.quote(str(today_at_midnight)))
-    global options
-    if options.verbose:
+    if args.verbose:
         print url
     r = requests.get(url, auth=AUTH)
     r.raise_for_status() # raise exception on error
     
     return json.loads(r.text)
 
-def list_current_time_entry():
+def list_current_time_entry(args):
     """Shows what the user is currently working on (duration is negative)."""
     entry = get_current_time_entry()
     if entry != None:
@@ -200,7 +196,7 @@ def list_current_time_entry():
     
     return 0
 
-def list_projects():
+def list_projects(args):
     """List all projects."""
     response = get_projects()
     for project in response['data']:
@@ -250,19 +246,21 @@ def list_time_entries_project(response):
         for entry in projs[proj]:
             print "  ",
             duration += print_time_entry(entry, show_proj=False)
-        print "   (%s)" % elapsed_time(duration)
+        print "   (%s)" % (elapsed_time(int(duration)))
 
     return 0
 
-def list_time_entries():
+def list_time_entries(args):
     """Lists all of the time entries from yesterday and today along with
        the amount of time devoted to each.
     """
 
+    if args.verbose:
+        print(args)
     # Get an array of objects of recent time data.
     response = get_time_entry_data()
 
-    if options.project_sort:
+    if args.proj:
         list_time_entries_project(response)
     else:
         list_time_entries_date(response)
@@ -307,7 +305,7 @@ def print_time_entry(entry, show_proj=True):
             start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc)
             project_name = " %s" % start_time.date()
     
-        if options.verbose:
+        if args.verbose:
             print "%s%s%s%s [%s]" % (is_running, entry['description'], project_name, e_time_str, entry['id'])
         else:
             print "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
@@ -315,12 +313,7 @@ def print_time_entry(entry, show_proj=True):
     return e_time
 
 def delete_time_entry(args):
-    if len(args) == 0:
-        global parser
-        parser.print_help()
-        return 1
-
-    entry_id = args[0]
+    entry_id = args.id
 
     response = get_time_entry_data()
 
@@ -341,30 +334,22 @@ def start_time_entry(args):
        args should be: ENTRY [@PROJECT]
     """
     
-    global toggl_cfg
-    # Make sure we have an entry description.
-    if len(args) == 0:
-        global parser
-        parser.print_help()
-        return 1
-    entry = args[0]
-    args = args[1:] # strip off the entry description
+    entry = args.msg
     
     # See if we have a @project.
     project_name = None
-    if len(args) >= 1 and args[0][0] == '@':
-        project_name = find_project(args[0][1:])
-        args = args[1:] # strip off the project
+    if args.proj is not None:
+        project_name = find_project(args.proj)
 
     # Create JSON object to send to toggl.
     data = create_time_entry_json(entry, project_name, 0)
 
-    if len(args) == 1:
+    if args.time is not None:
         tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-        st = tz.localize(parse(args[0]))
+        st = tz.localize(parse(args.time))
         data['time_entry']['start'] = st.astimezone(pytz.utc).isoformat()
     
-    if options.verbose:
+    if args.verbose:
         print json.dumps(data)
     
     headers = {'content-type': 'application/json'}
@@ -374,7 +359,7 @@ def start_time_entry(args):
     
     return 0
 
-def stop_time_entry(args=None):
+def stop_time_entry(args):
     """Stops the current time entry (duration is negative)."""
     global toggl_cfg
 
@@ -383,9 +368,9 @@ def stop_time_entry(args=None):
         # Get the start time from the entry, converted to UTC.
         start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc)
 
-        if args != None and len(args) == 1:
+        if args.time:
             tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-            stop_time = tz.localize(parse(args[0])).astimezone(pytz.utc)
+            stop_time = tz.localize(parse(args.time)).astimezone(pytz.utc)
         else:
             # Get stop time(now) in UTC.
             stop_time = datetime.datetime.now(pytz.utc)
@@ -397,8 +382,7 @@ def stop_time_entry(args=None):
 
         url = "%s/time_entries/%d.json" % (TOGGL_URL, entry['id'])
 
-        global options
-        if options.verbose:
+        if args.verbose:
             print url
 
         headers = {'content-type': 'application/json'}
@@ -410,8 +394,11 @@ def stop_time_entry(args=None):
 
     return 0
 
-def visit_web():
-    os.system(VISIT_WWW_COMMAND)
+def visit_web(args):
+    if not toggl_cfg.has_option('options', 'web_browser_cmd'):
+        print("Please set the web_browser_cmd setting in the options section of your ~/.togglrc")
+    else:
+        os.system(toggl_cfg.get('options', 'web_browser_cmd') + ' ' + WWW_ADDRESS)
 
 def create_default_cfg():
     cfg = ConfigParser.RawConfigParser()
@@ -421,10 +408,11 @@ def create_default_cfg():
     cfg.add_section('options')
     cfg.set('options', 'ignore_start_times', 'False')
     cfg.set('options', 'timezone', 'UTC')
+    cfg.set('options', 'web_browser_cmd', 'w3m')
     with open(os.path.expanduser('~/.togglrc'), 'w') as cfgfile:
         cfg.write(cfgfile)
 
-def main(argv=None):
+def main():
     """Program entry point."""
     
     global toggl_cfg
@@ -438,61 +426,49 @@ def main(argv=None):
     AUTH = (toggl_cfg.get('auth', 'username').strip(), toggl_cfg.get('auth', 'password').strip())
     IGNORE_START_TIMES = toggl_cfg.getboolean('options', 'ignore_start_times')
 
-    # Override the option parser epilog formatting rule.
-    # See http://stackoverflow.com/questions/1857346/python-optparse-how-to-include-additional-info-in-usage-output
-    optparse.OptionParser.format_epilog = lambda self, formatter: self.epilog
-    
-    global parser, options
-    parser = optparse.OptionParser(usage="Usage: %prog [OPTIONS] [ACTION]", \
-        epilog="\nActions:\n"
-        "  add ENTRY [@PROJECT] DURATION\t\tcreates a completed time entry\n"
-        "  ls\t\t\t\t\tlist recent time entries\n"
-        "  rm\t\t\t\t\tdelete a time entry by id\n"
-        "  now\t\t\t\t\tprint what you're working on now\n"
-        "  projects\t\t\t\tlists all projects\n"
-        "  start ENTRY [@PROJECT] [DATETIME]\tstarts a new entry\n"
-        "  stop [DATETIME]\t\t\tstops the current entry\n"
-        "  www\t\t\t\t\tvisits toggl.com\n"
-        "\n"
-        "  DURATION = [[Hours:]Minutes:]Seconds\n")
-    parser.add_option("-v", "--verbose",
-                          action="store_true", dest="verbose", default=False,
-                          help="print debugging output")
-    parser.add_option("-i", "--ignore",
-                        action="store_true", dest="ignore_start_and_stop", default=IGNORE_START_TIMES,
-                        help="ignore starting and ending times")
-    parser.add_option("-n", "--no_ignore",
-                        action="store_false", dest="ignore_start_and_stop", default=IGNORE_START_TIMES,
-                        help="don't ignore starting and ending times")
-    parser.add_option("-p", "--project",
-            action="store_true", dest="project_sort", default=False,
-            help="sort output by project rather than date")
-    (options, args) = parser.parse_args()
-    
-    if len(args) == 0 or args[0] == "ls":
-        return list_time_entries()
-    elif args[0] == "add":
-        return add_time_entry(args[1:])
-    elif args[0] == "now":
-        return list_current_time_entry()
-    elif args[0] == "projects":
-        return list_projects()
-    elif args[0] == "start":
-        return start_time_entry(args[1:])
-    elif args[0] == "stop":
-        if len(args) > 1:
-            return stop_time_entry(args[1:])
-        else:
-            return stop_time_entry()
-    elif args[0] == "www":
-        return visit_web()
-    elif args[0] == "rm":
-        return delete_time_entry(args[1:])
-    else:
-        parser.print_help()
-        return 1
+    parser = argparse.ArgumentParser(prog='toggl')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output')
+
+    subparsers = parser.add_subparsers(help='sub-command help')
+
+    parser_ls = subparsers.add_parser('ls', help='List time entries')
+    parser_ls.add_argument('-p', '--proj', help='Log entry message', action='store_true', default=False)
+    parser_ls.set_defaults(func=list_time_entries)
+
+    parser_add = subparsers.add_parser('add', help='Add a new time entry')
+    parser_add.add_argument('-m', '--msg', help='Log entry message', required=True)
+    parser_add.add_argument('-p', '--proj', help='Project for the log entry')
+    parser_add.add_argument('-d', '--duration', help='Entry duration', required=True)
+    parser_add.set_defaults(func=add_time_entry)
+
+    parser_now = subparsers.add_parser('now', help='Show the current time entry')
+    parser_now.set_defaults(func=list_current_time_entry)
+
+    parser_proj = subparsers.add_parser('proj', help='Show your project list')
+    parser_proj.set_defaults(func=list_projects)
+
+    parser_start = subparsers.add_parser('start', help='Start a new time entry')
+    parser_start.add_argument('-m', '--msg', help='Log entry message', required=True)
+    parser_start.add_argument('-p', '--proj', help='Project for the log entry')
+    parser_start.add_argument('-t', '--time', help='Specify the start date and/or time')
+    parser_start.set_defaults(func=start_time_entry)
+
+    parser_stop = subparsers.add_parser('stop', help='Start a new time entry')
+    parser_stop.add_argument('-t', '--time', help='Specify the stop time')
+    parser_stop.set_defaults(func=stop_time_entry)
+
+    parser_www = subparsers.add_parser('www', help='Open the webpage')
+    parser_www.set_defaults(func=visit_web)
+
+    parser_rm = subparsers.add_parser('rm', help='Remove a time entry')
+    parser_rm.add_argument('-i', '--id', help='The id to remove', required=True)
+    parser_rm.set_defaults(func=delete_time_entry)
+
+    global args
+    args = parser.parse_args(sys.argv[1:])
+    args.func(args)
 
 if __name__ == "__main__":
     sys.exit(main())
 
-# vim: set ts=4 sw=4 tw=4 :
+# vim: set ts=4 sw=4 tw=0 :
