@@ -50,16 +50,21 @@ def add_time_entry(args):
     args should be: ENTRY [@PROJECT] DURATION
     """
     
-    entry = args.msg
+    fields = {}
+
+    fields['description'] = args.msg
     
     if args.proj is not None:
-        project_name = find_project(args.proj)
+        fields['project'] = find_project(args.proj)['id']
+    else:
+        fields['project'] = None
     
+    fields['start_time'] = None
     # Get the duration.
-    duration = parse_duration(args.duration)
+    fields['duration'] = parse_duration(args.duration)
     
     # Create the JSON object, or die trying.
-    data = create_time_entry_json(entry, project_name, duration)
+    data = create_time_entry_json(fields)
     if data == None:
         return 1
     
@@ -93,17 +98,29 @@ def edit_time_entry(args):
         print >> sys.stderr, "Entry %s not found" % args.id
         return 1
 
-    proj_name = upd_entry['project']['name']
-    if hasattr(args, 'proj') and args.proj != None:
-        proj_name = find_project(args.proj)
+    fields = {}
 
-    new_ent = create_time_entry_json(upd_entry['description'],
-            proj_name, upd_entry['duration'])
+    if hasattr(args, 'proj') and args.proj != None:
+        fields['project'] = find_project(args.proj)['id']
+    else:
+        fields['project'] = upd_entry['project']['id']
 
     if hasattr(args, 'msg') and args.msg != None:
-        new_ent['time_entry']['description'] = args.msg
+        fields['description'] = args.msg
+    else:
+        fields['description'] = upd_entry['description']
+
     if hasattr(args, 'duration') and args.duration != None:
-        new_ent['time_entry']['duration'] = parse_duration(args.duration)
+        fields['duration'] = parse_duration(args.duration)
+    else:
+        fields['duration'] = upd_entry['duration']
+
+    if hasattr(args, 'start') and args.start != None:
+        fields['start_time'] = args.start
+    else:
+        fields['start_time'] = upd_entry['start']
+
+    new_ent = create_time_entry_json(fields)
 
     url = "%s/time_entries/%d.json" % (TOGGL_URL, entry['id'])
 
@@ -117,42 +134,36 @@ def edit_time_entry(args):
     return 0
             
 
-def create_time_entry_json(description, project_name=None, duration=0):
+def create_time_entry_json(fields):
     """Creates a basic time entry JSON from the given arguments
        project_name should not have the '@' prefix.
        duration should be an integer seconds.
     """
     
-    # See if we have a @project.
-    project_id = None
-    if project_name != None:
-        # Look up the project from toggl to get the id.
-        projects = get_projects()
-        for project in projects['data']:
-            if project['name'] == project_name:
-                project_id = project['id']
-                break
-        if project_id == None:
-            print >> sys.stderr, "Project not found '%s'" % project_name
-            return None
-    
+    duration = fields['duration']
+    start_time = fields['start_time']
+    project_id = fields['project']
+
     # If duration is 0, then we calculate the number of seconds since the
     # epoch.
     if duration == 0:
         duration = 0-time.time()
     
-    start_time = datetime.datetime.utcnow().isoformat()
-    if hasattr(args, 'time'):
+    if start_time is not None:
         tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-        st = tz.localize(parse(args.time))
-        start_time = st.astimezone(pytz.utc).isoformat()
+        tmp = parse(start_time)
+        if tmp.tzinfo is None:
+            tmp = tz.localize(tmp)
+        start_time = tmp.astimezone(pytz.utc).isoformat()
+    else:
+        start_time = datetime.datetime.utcnow().isoformat()
     
     # Create JSON object to send to toggl.
     data = { 'time_entry' : \
-        { 'duration' : duration,
+        { 'duration' : fields['duration'],
           'billable' : False,
           'start' : start_time,
-          'description' : description,
+          'description' : fields['description'],
           'created_with' : 'toggl-cli',
           'ignore_start_and_stop' : IGNORE_START_TIMES
         }
@@ -206,7 +217,7 @@ def get_current_time_entry():
     response = get_time_entry_data()
     
     for entry in response['data']:
-        if int(entry['duration']) < 0:
+        if int(entry['duration']) <= 0:
             return entry
     
     return None
@@ -281,7 +292,7 @@ def find_project(proj):
     response = get_projects()
     for project in response['data']:
         if project['name'].startswith(proj):
-            return project['name']
+            return project
     print "Could not find project!"
     sys.exit(1)
 
@@ -416,12 +427,18 @@ def start_time_entry(args):
     entry = args.msg
     
     # See if we have a @project.
-    project_name = None
+    project_id = None
     if args.proj is not None:
-        project_name = find_project(args.proj)
+        project_id = find_project(args.proj)['id']
+
+    fields = {}
+    fields['description'] = args.msg
+    fields['project'] = project_id
+    fields['start_time'] = args.time
+    fields['duration'] = 0
 
     # Create JSON object to send to toggl.
-    data = create_time_entry_json(entry, project_name, 0)
+    data = create_time_entry_json(fields)
 
     if args.verbose:
         print json.dumps(data)
