@@ -44,8 +44,6 @@ from dateutil.parser import *
 TOGGL_URL = "https://www.toggl.com/api/v6"
 DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
 
-args = None
-
 def add_time_entry(args):
     """
     Creates a completed time entry.
@@ -58,7 +56,7 @@ def add_time_entry(args):
         project_name = find_project(args.proj)
     
     # Get the duration.
-    duration = args.duration
+    duration = parse_duration(args.duration)
     
     # Create the JSON object, or die trying.
     data = create_time_entry_json(entry, project_name, duration)
@@ -175,14 +173,14 @@ def get_projects():
     r.raise_for_status() # raise exception on error
     return json.loads(r.text)
 
-def get_time_entry_data(args=None):
+def get_time_entry_data():
     """Fetches time entry data and returns it as a Python array."""
     
     tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
 
     end_date = None
     # Construct the start and end dates. Toggl seems to want these in UTC.
-    if args and args.start is not None:
+    if hasattr(args, 'start') and args.start is not None:
         lt = tz.localize(parse(args.start))
         end_date = lt.astimezone(pytz.utc)
     else:
@@ -194,7 +192,7 @@ def get_time_entry_data(args=None):
  
     start_date = None
     # The end date is actually earlier in time than start date
-    if args and args.end is not None:
+    if hasattr(args, 'end') and args.end is not None:
         lt = tz.localize(parse(args.end))
         start_date = lt.astimezone(pytz.utc)
     else:
@@ -291,7 +289,7 @@ def list_time_entries(args):
     if args.verbose:
         print(args)
     # Get an array of objects of recent time data.
-    response = get_time_entry_data(args)
+    response = get_time_entry_data()
 
     if args.proj:
         list_time_entries_project(response)
@@ -394,7 +392,6 @@ def start_time_entry(args):
 
 def stop_time_entry(args):
     """Stops the current time entry (duration is negative)."""
-    global toggl_cfg
 
     entry = get_current_time_entry()
     if entry != None:
