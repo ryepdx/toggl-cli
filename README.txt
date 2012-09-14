@@ -18,6 +18,7 @@ Requirements
 
 * iso8601 module
 * pytz module
+* dateutil module
 
 Configuration
 -------------

@@ -42,6 +42,7 @@ import argparse
 from dateutil.parser import *
 
 TOGGL_URL = "https://www.toggl.com/api/v6"
+DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
 
 args = None
 
@@ -126,12 +127,20 @@ def elapsed_time(seconds, suffixes=['y','w','d','h','m','s'], add_s=False, separ
     # the pieces of time to iterate over (days, hours, minutes, etc)
     # - the first piece in each tuple is the suffix (d, h, w)
     # - the second piece is the length in seconds (a day is 60s * 60m * 24h)
-    parts = [(suffixes[0], 60 * 60 * 24 * 7 * 52),
-          (suffixes[1], 60 * 60 * 24 * 7),
-          (suffixes[2], 60 * 60 * 24),
-          (suffixes[3], 60 * 60),
-          (suffixes[4], 60),
-          (suffixes[5], 1)]
+    if toggl_cfg.has_option('options', 'use_mandays') and \
+            toggl_cfg.getboolean('options', 'use_mandays') == True:
+
+        parts = [('md', 60 * 60 * 8),
+              (suffixes[3], 60 * 60),
+              (suffixes[4], 60),
+              (suffixes[5], 1)]
+    else:
+        parts = [(suffixes[0], 60 * 60 * 24 * 7 * 52),
+              (suffixes[1], 60 * 60 * 24 * 7),
+              (suffixes[2], 60 * 60 * 24),
+              (suffixes[3], 60 * 60),
+              (suffixes[4], 60),
+              (suffixes[5], 1)]
     
     # for each time piece, grab the value and remaining seconds, and add it to
     # the time string
@@ -166,19 +175,37 @@ def get_projects():
     r.raise_for_status() # raise exception on error
     return json.loads(r.text)
 
-def get_time_entry_data():
+def get_time_entry_data(args=None):
     """Fetches time entry data and returns it as a Python array."""
     
+    tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
+
+    end_date = None
     # Construct the start and end dates. Toggl seems to want these in UTC.
-    today = datetime.datetime.now(pytz.utc)
-    today_at_midnight = today.replace(hour=23, minute=59, second=59)
-    
-    yesterday = today - datetime.timedelta(days=1)
-    yesterday_at_midnight = datetime.datetime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0)
+    if args and args.start is not None:
+        lt = tz.localize(parse(args.start))
+        end_date = lt.astimezone(pytz.utc)
+    else:
+        endday = datetime.datetime.now(pytz.utc)
+        # Set the default start day to monday
+        if endday.weekday() != 0:
+            endday = endday - datetime.timedelta(days=endday.weekday())
+        end_date = datetime.datetime(endday.year, endday.month, endday.day, 0, 0, 0)
+ 
+    start_date = None
+    # The end date is actually earlier in time than start date
+    if args and args.end is not None:
+        lt = tz.localize(parse(args.end))
+        start_date = lt.astimezone(pytz.utc)
+    else:
+        today = datetime.datetime.now()
+        start_date = today.replace(hour=23, minute=59, second=59)
     
     # Fetch the data or die trying.
+    # Toggle has the start/end dates creating a confusing
+    # backwards range. Swap them here.
     url = "%s/time_entries.json?start_date=%s&end_date=%s" % \
-        (TOGGL_URL, urllib.quote(str(yesterday_at_midnight)), urllib.quote(str(today_at_midnight)))
+        (TOGGL_URL, urllib.quote(str(end_date)), urllib.quote(str(start_date)))
     if args.verbose:
         print url
     r = requests.get(url, auth=AUTH)
@@ -221,11 +248,17 @@ def list_time_entries_date(response):
             days[start_time] = []
         days[start_time].append(entry)
 
+    date_fmt = DEFAULT_DATEFMT
+    if toggl_cfg.has_option('options', 'dateformat'):
+        date_fmt = toggl_cfg.get('options', 'dateformat')
+
     # For each day, print the entries, then sum the times.
-    for date in sorted(days.keys()):
-        print date
+    for date_str in sorted(days.keys()):
+        date = parse(date_str)
+        print date.strftime(date_fmt)
+
         duration = 0
-        for entry in days[date]:
+        for entry in days[date_str]:
             print "  ",
             duration += print_time_entry(entry)
         print "   (%s)" % elapsed_time(int(duration))
@@ -258,7 +291,7 @@ def list_time_entries(args):
     if args.verbose:
         print(args)
     # Get an array of objects of recent time data.
-    response = get_time_entry_data()
+    response = get_time_entry_data(args)
 
     if args.proj:
         list_time_entries_project(response)
@@ -409,6 +442,8 @@ def create_default_cfg():
     cfg.set('options', 'ignore_start_times', 'False')
     cfg.set('options', 'timezone', 'UTC')
     cfg.set('options', 'web_browser_cmd', 'w3m')
+    cfg.set('options', 'dateformat', DEFAULT_DATEFMT)
+    cfg.set('options', 'use_mandays', False)
     with open(os.path.expanduser('~/.togglrc'), 'w') as cfgfile:
         cfg.write(cfgfile)
 
@@ -432,7 +467,9 @@ def main():
     subparsers = parser.add_subparsers(help='sub-command help')
 
     parser_ls = subparsers.add_parser('ls', help='List time entries')
-    parser_ls.add_argument('-p', '--proj', help='Log entry message', action='store_true', default=False)
+    parser_ls.add_argument('-p', '--proj', help='Sort entries by project', action='store_true', default=False)
+    parser_ls.add_argument('-s', '--start', help='Specify start date', default=None)
+    parser_ls.add_argument('-e', '--end', help='Specify end date', default=None)
     parser_ls.set_defaults(func=list_time_entries)
 
     parser_add = subparsers.add_parser('add', help='Add a new time entry')
