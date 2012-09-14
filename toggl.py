@@ -61,7 +61,10 @@ def add_time_entry(args):
     
     fields['start_time'] = None
     # Get the duration.
-    fields['duration'] = parse_duration(args.duration)
+    if args.duration is not None:
+        fields['duration'] = parse_duration(args.duration)
+    else:
+        fields['duration'] = 0
     
     # Create the JSON object, or die trying.
     data = create_time_entry_json(fields)
@@ -144,11 +147,6 @@ def create_time_entry_json(fields):
     start_time = fields['start_time']
     project_id = fields['project']
 
-    # If duration is 0, then we calculate the number of seconds since the
-    # epoch.
-    if duration == 0:
-        duration = 0-time.time()
-    
     if start_time is not None:
         tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
         tmp = parse(start_time)
@@ -217,7 +215,7 @@ def get_current_time_entry():
     response = get_time_entry_data()
     
     for entry in response['data']:
-        if int(entry['duration']) <= 0:
+        if int(entry['duration']) < 0:
             return entry
     
     return None
@@ -379,11 +377,11 @@ def print_time_entry(entry, show_proj=True):
     # have to calculate the duration by adding the current time.
     is_running = ''
     e_time = 0
-    if entry['duration'] > 0:
+    if entry['duration'] >= 0:
         e_time = int(entry['duration'])
     else:
         is_running = '* '
-        e_time = time.time() + int(entry['duration'])
+        e_time = (datetime.datetime.now(pytz.utc) - iso8601.parse_date(entry['start']).astimezone(pytz.utc)).seconds
     e_time_str = " %s" % elapsed_time(int(e_time), separator='')
     
     # Get the project name (if one exists).
@@ -435,7 +433,7 @@ def start_time_entry(args):
     fields['description'] = args.msg
     fields['project'] = project_id
     fields['start_time'] = args.time
-    fields['duration'] = 0
+    fields['duration'] = -1
 
     # Create JSON object to send to toggl.
     data = create_time_entry_json(fields)
