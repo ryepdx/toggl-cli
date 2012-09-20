@@ -59,7 +59,9 @@ def add_time_entry(args):
     else:
         fields['project'] = None
     
-    fields['start_time'] = None
+    fields['start_time'] = datetime.datetime.utcnow().isoformat()
+    fields['end_time'] = datetime.datetime.utcnow().isoformat()
+
     # Get the duration.
     if args.duration is not None:
         fields['duration'] = parse_duration(args.duration)
@@ -103,25 +105,36 @@ def edit_time_entry(args):
 
     fields = {}
 
-    if hasattr(args, 'proj') and args.proj != None:
+    if args.proj != None:
         fields['project'] = find_project(args.proj)['id']
     else:
         fields['project'] = upd_entry['project']['id']
 
-    if hasattr(args, 'msg') and args.msg != None:
+    if args.msg != None:
         fields['description'] = args.msg
     else:
         fields['description'] = upd_entry['description']
 
-    if hasattr(args, 'duration') and args.duration != None:
-        fields['duration'] = parse_duration(args.duration)
-    else:
-        fields['duration'] = upd_entry['duration']
-
-    if hasattr(args, 'start') and args.start != None:
-        fields['start_time'] = args.start
+    if args.start != None:
+        fields['start_time'] = parse_time_str(args.start)
     else:
         fields['start_time'] = upd_entry['start']
+
+    if args.end != None:
+        fields['end_time'] = parse_time_str(args.end)
+    else:
+        fields['end_time'] = upd_entry['stop']
+
+    if args.calc_duration != False:
+        start_time = iso8601.parse_date(fields['start_time']).astimezone(pytz.utc)
+        end_time = iso8601.parse_date(parse_time_str(fields['end_time'])).astimezone(pytz.utc)
+
+        fields['duration'] = (end_time - start_time).seconds
+    else:
+        if args.duration != None:
+            fields['duration'] = parse_duration(args.duration)
+        else:
+            fields['duration'] = upd_entry['duration']
 
     new_ent = create_time_entry_json(fields)
 
@@ -136,6 +149,12 @@ def edit_time_entry(args):
 
     return 0
             
+def parse_time_str(timestr):
+    tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
+    tmp = parse(timestr)
+    if tmp.tzinfo is None:
+        tmp = tz.localize(tmp)
+    return tmp.astimezone(pytz.utc).isoformat()
 
 def create_time_entry_json(fields):
     """Creates a basic time entry JSON from the given arguments
@@ -145,25 +164,18 @@ def create_time_entry_json(fields):
     
     duration = fields['duration']
     start_time = fields['start_time']
+    end_time = fields['end_time']
     project_id = fields['project']
 
-    if start_time is not None:
-        tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-        tmp = parse(start_time)
-        if tmp.tzinfo is None:
-            tmp = tz.localize(tmp)
-        start_time = tmp.astimezone(pytz.utc).isoformat()
-    else:
-        start_time = datetime.datetime.utcnow().isoformat()
-    
     # Create JSON object to send to toggl.
     data = { 'time_entry' : \
         { 'duration' : fields['duration'],
           'billable' : False,
           'start' : start_time,
+          'stop' : end_time,
           'description' : fields['description'],
           'created_with' : 'toggl-cli',
-          'ignore_start_and_stop' : IGNORE_START_TIMES
+          'ignore_start_and_stop' : IGNORE_START_TIMES 
         }
     }
     if project_id != None:
@@ -230,14 +242,14 @@ def get_projects():
     r.raise_for_status() # raise exception on error
     return json.loads(r.text)
 
-def get_time_entry_data():
+def get_time_entry_data(start=None, end=None):
     """Fetches time entry data and returns it as a Python array."""
     
     tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
 
     end_date = None
     # Construct the start and end dates. Toggl seems to want these in UTC.
-    if hasattr(args, 'start') and args.start is not None:
+    if start != None:
         lt = tz.localize(parse(args.start))
         end_date = lt.astimezone(pytz.utc)
     else:
@@ -249,7 +261,7 @@ def get_time_entry_data():
  
     start_date = None
     # The end date is actually earlier in time than start date
-    if hasattr(args, 'end') and args.end is not None:
+    if end != None:
         lt = tz.localize(parse(args.end))
         start_date = lt.astimezone(pytz.utc)
     else:
@@ -315,7 +327,7 @@ def list_time_entries_date(response):
         duration = 0
         for entry in days[date_str]:
             print "  ",
-            duration += print_time_entry(entry)
+            duration += print_time_entry(entry, verbose=args.verbose_list)
         print "   (%s)" % elapsed_time(int(duration))
 
     return 0
@@ -333,7 +345,7 @@ def list_time_entries_project(response):
         duration = 0
         for entry in projs[proj]:
             print "  ",
-            duration += print_time_entry(entry, show_proj=False)
+            duration += print_time_entry(entry, show_proj=False, verbose=args.verbose_list)
         print "   (%s)" % (elapsed_time(int(duration)))
 
     return 0
@@ -369,7 +381,7 @@ def parse_duration(str):
     
     return duration
         
-def print_time_entry(entry, show_proj=True):
+def print_time_entry(entry, show_proj=True, verbose=False):
     """Utility function to print a time entry object and returns the
        integer duration for this entry."""
     
@@ -393,7 +405,7 @@ def print_time_entry(entry, show_proj=True):
             start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc)
             project_name = " %s" % start_time.date()
     
-        if args.verbose:
+        if verbose:
             print "%s%s%s%s [%s]" % (is_running, entry['description'], project_name, e_time_str, entry['id'])
         else:
             print "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
@@ -432,7 +444,14 @@ def start_time_entry(args):
     fields = {}
     fields['description'] = args.msg
     fields['project'] = project_id
-    fields['start_time'] = args.time
+    start_time = None
+    if args.time != None:
+        start_time = parse_time_str(args.time)
+    else:
+        start_time = datetime.datetime.utcnow().isoformat()
+
+    fields['start_time'] = start_time
+    fields['end_time'] = None
     fields['duration'] = -1
 
     # Create JSON object to send to toggl.
@@ -525,6 +544,7 @@ def main():
     parser_ls.add_argument('-p', '--proj', help='Sort entries by project', action='store_true', default=False)
     parser_ls.add_argument('-s', '--start', help='Specify start date', default=None)
     parser_ls.add_argument('-e', '--end', help='Specify end date', default=None)
+    parser_ls.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
     parser_ls.set_defaults(func=list_time_entries)
 
     parser_add = subparsers.add_parser('add', help='Add a new time entry')
@@ -539,6 +559,8 @@ def main():
     parser_edit.add_argument('-p', '--proj', help='Project for the log entry')
     parser_edit.add_argument('-d', '--duration', help='Entry duration')
     parser_edit.add_argument('-s', '--start', help='Specify start date', default=None)
+    parser_edit.add_argument('-e', '--end', help='Specify end date', default=None)
+    parser_edit.add_argument('-c', '--calc-duration', help='Calculate duration from start/end dates', action='store_true', default=False)
     parser_edit.set_defaults(func=edit_time_entry)
 
     parser_now = subparsers.add_parser('now', help='Show the current time entry')
