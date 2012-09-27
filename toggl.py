@@ -43,6 +43,7 @@ from dateutil.parser import *
 
 TOGGL_URL = "https://www.toggl.com/api/v6"
 DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
+DEFAULT_ENTRY_DATEFMT = '%Y-%m-%d %H:%M%p'
 
 def add_time_entry(args):
     """
@@ -316,8 +317,8 @@ def list_time_entries_date(response):
         days[start_time].append(entry)
 
     date_fmt = DEFAULT_DATEFMT
-    if toggl_cfg.has_option('options', 'dateformat'):
-        date_fmt = toggl_cfg.get('options', 'dateformat')
+    if toggl_cfg.has_option('options', 'datefmt'):
+        date_fmt = toggl_cfg.get('options', 'datefmt')
 
     # For each day, print the entries, then sum the times.
     for date_str in sorted(days.keys()):
@@ -397,16 +398,28 @@ def print_time_entry(entry, show_proj=True, verbose=False):
     e_time_str = " %s" % elapsed_time(int(e_time), separator='')
     
     # Get the project name (if one exists).
+    tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
     project_name = ''
     if 'project' in entry:
         if show_proj:
             project_name = " @%s" % entry['project']['name']
         else:
-            start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc)
+            start_time = iso8601.parse_date(entry['start']).astimezone(tz)
             project_name = " %s" % start_time.date()
     
         if verbose:
-            print "%s%s%s%s [%s]" % (is_running, entry['description'], project_name, e_time_str, entry['id'])
+            date_fmt = DEFAULT_ENTRY_DATEFMT
+            if toggl_cfg.has_option('options', 'entry_datefmt'):
+                date_fmt = toggl_cfg.get('options', 'entry_datefmt')
+
+            st = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
+            if entry['stop'] == None:
+                et = ""
+            else:
+                et = iso8601.parse_date(entry['stop']).astimezone(tz).strftime(date_fmt)
+
+            print "[%s] %s%s%s%s (%s - %s)" % (entry['id'], is_running, entry['description'], \
+                    project_name, e_time_str, st, et)
         else:
             print "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
 
@@ -516,7 +529,8 @@ def create_default_cfg():
     cfg.set('options', 'ignore_start_times', 'False')
     cfg.set('options', 'timezone', 'UTC')
     cfg.set('options', 'web_browser_cmd', 'w3m')
-    cfg.set('options', 'dateformat', DEFAULT_DATEFMT)
+    cfg.set('options', 'datefmt', DEFAULT_DATEFMT)
+    cfg.set('options', 'entry_datefmt', DEFAULT_ENTRY_DATEFMT)
     cfg.set('options', 'use_mandays', False)
     with open(os.path.expanduser('~/.togglrc'), 'w') as cfgfile:
         cfg.write(cfgfile)

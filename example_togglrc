@@ -1,0 +1,12 @@
+# A sample ~/.togglrc file
+[auth]
+username=user@example.com
+password=password123
+
+[options]
+ignore_start_times=False
+timezone=Asia/Hong_Kong
+web_browser_cmd=w3m
+use_mandays=True
+datefmt=%Y-%m-%d (%A)
+entry_datefmt=%Y-%m-%d %H:%M%p
