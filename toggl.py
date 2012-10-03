@@ -258,7 +258,7 @@ def get_time_entry_data(start=None, end=None):
         # Set the default start day to monday
         if endday.weekday() != 0:
             endday = endday - datetime.timedelta(days=endday.weekday())
-        end_date = datetime.datetime(endday.year, endday.month, endday.day, 0, 0, 0)
+        end_date = tz.localize(datetime.datetime(endday.year, endday.month, endday.day, 0, 0, 0))
  
     start_date = None
     # The end date is actually earlier in time than start date
@@ -311,7 +311,8 @@ def list_time_entries_date(response):
     # Sort the time entries into buckets based on "Month Day" of the entry.
     days = { }
     for entry in response['data']:
-        start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc).strftime("%b %d")
+        tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
+        start_time = iso8601.parse_date(entry['start']).astimezone(tz).strftime("%b %d")
         if start_time not in days:
             days[start_time] = []
         days[start_time].append(entry)
@@ -356,10 +357,11 @@ def list_time_entries(args):
        the amount of time devoted to each.
     """
 
-    if args.verbose:
-        print(args)
     # Get an array of objects of recent time data.
     response = get_time_entry_data()
+    if args.verbose:
+        print(args)
+        print(response)
 
     if args.proj:
         list_time_entries_project(response)
