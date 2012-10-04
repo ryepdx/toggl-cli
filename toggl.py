@@ -308,23 +308,22 @@ def find_project(proj):
     sys.exit(1)
 
 def list_time_entries_date(response):
-    # Sort the time entries into buckets based on "Month Day" of the entry.
-    days = { }
-    for entry in response['data']:
-        tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-        start_time = iso8601.parse_date(entry['start']).astimezone(tz).strftime("%b %d")
-        if start_time not in days:
-            days[start_time] = []
-        days[start_time].append(entry)
-
     date_fmt = DEFAULT_DATEFMT
     if toggl_cfg.has_option('options', 'datefmt'):
         date_fmt = toggl_cfg.get('options', 'datefmt')
 
+    # Sort the time entries into buckets based on "Month Day" of the entry.
+    days = { }
+    for entry in response['data']:
+        tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
+        start_time = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
+        if start_time not in days:
+            days[start_time] = []
+        days[start_time].append(entry)
+
     # For each day, print the entries, then sum the times.
     for date_str in sorted(days.keys()):
-        date = parse(date_str)
-        print date.strftime(date_fmt)
+        print date_str
 
         duration = 0
         for entry in days[date_str]:
@@ -358,7 +357,7 @@ def list_time_entries(args):
     """
 
     # Get an array of objects of recent time data.
-    response = get_time_entry_data()
+    response = get_time_entry_data(start=args.start, end=args.end)
     if args.verbose:
         print(args)
         print(response)
