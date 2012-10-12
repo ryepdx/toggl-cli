@@ -321,6 +321,7 @@ def list_time_entries_date(response):
             days[start_time] = []
         days[start_time].append(entry)
 
+    dur_sum = 0
     # For each day, print the entries, then sum the times.
     for date_str in sorted(days.keys()):
         print date_str
@@ -330,7 +331,10 @@ def list_time_entries_date(response):
             print "  ",
             duration += print_time_entry(entry, verbose=args.verbose_list)
         print "   (%s)" % elapsed_time(int(duration))
+        dur_sum += duration
 
+    if args.sum:
+        print "Total time: %s" % elapsed_time(dur_sum)
     return 0
 
 def list_time_entries_project(response):
@@ -341,6 +345,7 @@ def list_time_entries_project(response):
             projs[proj] = []
         projs[proj].append(entry)
     
+    dur_sum = 0
     for proj in projs.keys():
         print "@" + proj
         duration = 0
@@ -348,7 +353,10 @@ def list_time_entries_project(response):
             print "  ",
             duration += print_time_entry(entry, show_proj=False, verbose=args.verbose_list)
         print "   (%s)" % (elapsed_time(int(duration)))
+        dur_sum += duration
 
+    if args.sum:
+        print "Total time: %s" % elapsed_time(dur_sum)
     return 0
 
 def list_time_entries(args):
@@ -560,6 +568,7 @@ def main():
     parser_ls.add_argument('-s', '--start', help='Specify start date', default=None)
     parser_ls.add_argument('-e', '--end', help='Specify end date', default=None)
     parser_ls.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
+    parser_ls.add_argument('-S', '--sum', help='Show time summary', action='store_true', default=False)
     parser_ls.set_defaults(func=list_time_entries)
 
     parser_add = subparsers.add_parser('add', help='Add a new time entry')
