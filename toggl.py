@@ -340,7 +340,10 @@ def list_time_entries_date(response):
 def list_time_entries_project(response):
     projs = { }
     for entry in response['data']:
-        proj = entry["project"]['name']
+        if not 'project' in entry:
+            proj = '(No Project)'
+        else:
+            proj = entry["project"]['name']
         if proj not in projs:
             projs[proj] = []
         projs[proj].append(entry)
@@ -409,28 +412,29 @@ def print_time_entry(entry, show_proj=True, verbose=False):
     # Get the project name (if one exists).
     tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
     project_name = ''
-    if 'project' in entry:
-        if show_proj:
-            project_name = " @%s" % entry['project']['name']
-        else:
-            start_time = iso8601.parse_date(entry['start']).astimezone(tz)
-            project_name = " %s" % start_time.date()
-    
-        if verbose:
-            date_fmt = DEFAULT_ENTRY_DATEFMT
-            if toggl_cfg.has_option('options', 'entry_datefmt'):
-                date_fmt = toggl_cfg.get('options', 'entry_datefmt')
+    if not 'project' in entry:
+        project_name = " (No Project)"
+    elif show_proj:
+        project_name = " @%s" % entry['project']['name']
+    else:
+        start_time = iso8601.parse_date(entry['start']).astimezone(tz)
+        project_name = " %s" % start_time.date()
 
-            st = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
-            if entry['stop'] == None:
-                et = ""
-            else:
-                et = iso8601.parse_date(entry['stop']).astimezone(tz).strftime(date_fmt)
+    if verbose:
+        date_fmt = DEFAULT_ENTRY_DATEFMT
+        if toggl_cfg.has_option('options', 'entry_datefmt'):
+            date_fmt = toggl_cfg.get('options', 'entry_datefmt')
 
-            print "[%s] %s%s%s%s (%s - %s)" % (entry['id'], is_running, entry['description'], \
-                    project_name, e_time_str, st, et)
+        st = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
+        if entry['stop'] == None:
+            et = ""
         else:
-            print "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
+            et = iso8601.parse_date(entry['stop']).astimezone(tz).strftime(date_fmt)
+
+        print "[%s] %s%s%s%s (%s - %s)" % (entry['id'], is_running, entry['description'], \
+                project_name, e_time_str, st, et)
+    else:
+        print "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
 
     return e_time
 
