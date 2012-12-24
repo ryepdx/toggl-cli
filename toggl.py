@@ -60,21 +60,36 @@ def add_time_entry(args):
     else:
         fields['project'] = None
     
-    fields['start_time'] = datetime.datetime.utcnow().isoformat()
-    fields['end_time'] = datetime.datetime.utcnow().isoformat()
+    # Start and end params
+    if args.start is not None:
+        fields['start_time'] = parse_time_str(args.start)
+    else:
+        fields['start_time'] = datetime.datetime.utcnow().isoformat()
+
+    if args.end is not None:
+        fields['end_time'] = parse_time_str(args.end)
+    else:
+        fields['end_time'] = datetime.datetime.utcnow().isoformat()
 
     # Get the duration.
     if args.duration is not None:
         fields['duration'] = parse_duration(args.duration)
     else:
-        fields['duration'] = 0
+        start_time = iso8601.parse_date(fields['start_time']).astimezone(pytz.utc)
+        end_time = iso8601.parse_date(parse_time_str(fields['end_time'])).astimezone(pytz.utc)
+
+        fields['duration'] = (end_time - start_time).seconds
     
     # Create the JSON object, or die trying.
     data = create_time_entry_json(fields)
     if data == None:
         return 1
     
-    data['ignore_start_and_stop'] = True
+    if args.duration is not None:
+        data['ignore_start_and_stop'] = True
+    else:
+        data['ignore_start_and_stop'] = False
+
     if args.verbose:
         print json.dumps(data)
     
@@ -578,7 +593,9 @@ def main():
     parser_add = subparsers.add_parser('add', help='Add a new time entry')
     parser_add.add_argument('-m', '--msg', help='Log entry message', required=True)
     parser_add.add_argument('-p', '--proj', help='Project for the log entry')
-    parser_add.add_argument('-d', '--duration', help='Entry duration', required=True)
+    parser_add.add_argument('-s', '--start', help='Specify start date', default=None)
+    parser_add.add_argument('-e', '--end', help='Specify end date', default=None)
+    parser_add.add_argument('-d', '--duration', help='Entry duration', required=False)
     parser_add.set_defaults(func=add_time_entry)
 
     parser_edit = subparsers.add_parser('edit', help='Edit an existing time entry')
