@@ -181,12 +181,13 @@ def create_time_entry_json(fields):
         { 'duration' : fields['duration'],
           'billable' : False,
           'start' : start_time,
-          'stop' : end_time,
           'description' : fields['description'],
           'created_with' : 'toggl-cli',
           'ignore_start_and_stop' : IGNORE_START_TIMES 
         }
     }
+    if end_time != None:
+        data['time_entry']['stop'] = end_time
     if project_id != None:
         data['time_entry']['project'] = { 'id' : project_id }
     
