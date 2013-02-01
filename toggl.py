@@ -107,17 +107,10 @@ def edit_time_entry(args):
     if args.verbose:
         print(args)
     # Get an array of objects of recent time data.
-    response = get_time_entry_data()
+    upd_entry = get_time_entry(args.id)["data"]
 
-    upd_entry = None
-    for entry in response['data']:
-        if str(entry['id']) == args.id:
-            upd_entry = entry
-            break
-
-    if upd_entry == None:
-        print >> sys.stderr, "Entry %s not found" % args.id
-        return 1
+    if args.verbose:
+        print json.dumps(upd_entry)
 
     fields = {}
 
@@ -154,7 +147,7 @@ def edit_time_entry(args):
 
     new_ent = create_time_entry_json(fields)
 
-    url = "%s/time_entries/%d.json" % (TOGGL_URL, entry['id'])
+    url = "%s/time_entries/%s.json" % (TOGGL_URL, urllib.quote(args.id))
 
     if args.verbose:
         print url
@@ -240,7 +233,7 @@ def elapsed_time(seconds, suffixes=['y','w','d','h','m','s'], add_s=False, separ
 
 def get_current_time_entry():
     """Returns the current time entry JSON object, or None."""
-    response = get_time_entry_data()
+    response = get_time_entries()
     
     for entry in response['data']:
         if int(entry['duration']) < 0:
@@ -258,7 +251,20 @@ def get_projects():
     r.raise_for_status() # raise exception on error
     return json.loads(r.text)
 
-def get_time_entry_data(start=None, end=None):
+def get_time_entry(entry_id):
+    # Fetch the data or die trying.
+    # Toggle has the start/end dates creating a confusing
+    # backwards range. Swap them here.
+    url = "%s/time_entries/%s.json" % \
+        (TOGGL_URL, urllib.quote(entry_id))
+    if args.verbose:
+        print url
+    r = requests.get(url, auth=AUTH)
+    r.raise_for_status() # raise exception on error
+    
+    return json.loads(r.text)
+
+def get_time_entries(start=None, end=None):
     """Fetches time entry data and returns it as a Python array."""
     
     tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
@@ -383,7 +389,7 @@ def list_time_entries(args):
     """
 
     # Get an array of objects of recent time data.
-    response = get_time_entry_data(start=args.start, end=args.end)
+    response = get_time_entries(start=args.start, end=args.end)
     if args.verbose:
         print(args)
         print(response)
@@ -456,7 +462,7 @@ def print_time_entry(entry, show_proj=True, verbose=False):
 def delete_time_entry(args):
     entry_id = args.id
 
-    response = get_time_entry_data()
+    response = get_time_entries()
 
     for entry in response['data']:
         if str(entry['id']) == entry_id:
