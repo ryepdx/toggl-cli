@@ -39,6 +39,7 @@ import time
 import urllib
 import ConfigParser
 import argparse
+import re
 from dateutil.parser import *
 
 TOGGL_URL = "https://www.toggl.com/api/v6"
@@ -336,14 +337,14 @@ def find_project(proj):
     print "Could not find project!"
     sys.exit(1)
 
-def list_time_entries_date(response):
+def list_time_entries_date(entries):
     date_fmt = DEFAULT_DATEFMT
     if toggl_cfg.has_option('options', 'datefmt'):
         date_fmt = toggl_cfg.get('options', 'datefmt')
 
     # Sort the time entries into buckets based on "Month Day" of the entry.
     days = { }
-    for entry in response['data']:
+    for entry in entries:
         tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
         start_time = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
         if start_time not in days:
@@ -366,9 +367,9 @@ def list_time_entries_date(response):
         print "Total time: %s" % elapsed_time(dur_sum)
     return 0
 
-def list_time_entries_project(response):
+def list_time_entries_project(entries):
     projs = { }
-    for entry in response['data']:
+    for entry in entries:
         if not 'project' in entry:
             proj = '(No Project)'
         else:
@@ -391,6 +392,12 @@ def list_time_entries_project(response):
         print "Total time: %s" % elapsed_time(dur_sum)
     return 0
 
+def filter_match(entry, pattern):
+    return re.search(pattern, entry['description'])
+
+def filter_entries(entries, pattern):
+    return [e for e in entries if filter_match(e, pattern)]
+
 def list_time_entries(args):
     """Lists all of the time entries from yesterday and today along with
        the amount of time devoted to each.
@@ -402,10 +409,15 @@ def list_time_entries(args):
         print(args)
         print(response)
 
+    entries = response['data']
+
+    if args.grep:
+        entries = filter_entries(entries, args.grep)
+
     if args.proj:
-        list_time_entries_project(response)
+        list_time_entries_project(entries)
     else:
-        list_time_entries_date(response)
+        list_time_entries_date(entries)
 
 def parse_duration(str):
     """Parses a string of the form [[Hours:]Minutes:]Seconds and returns
@@ -470,16 +482,15 @@ def print_time_entry(entry, show_proj=True, verbose=False):
 def delete_time_entry(args):
     entry_id = args.id
 
-    response = get_time_entries()
+    print "Deleting entry %s" % entry_id
 
-    for entry in response['data']:
-        if str(entry['id']) == entry_id:
-            print "Deleting entry " + entry_id
-
-            headers = {'content-type': 'application/json'}
-            r = requests.delete("%s/time_entries/%s.json" % (TOGGL_URL, entry_id), auth=AUTH,
-                data=None, headers=headers)
-            r.raise_for_status() # raise exception on error
+    headers = {'content-type': 'application/json'}
+    r = requests.delete("%s/time_entries/%s.json" % (TOGGL_URL, urllib.quote(entry_id)), auth=AUTH,
+        data=None, headers=headers)
+    if r.status_code == 404:
+        print "Entry %s does not exist!" % entry_id
+        return 1
+    r.raise_for_status() # raise exception on error
 
     return 0
 
@@ -609,6 +620,7 @@ def main():
     parser_ls.add_argument('-e', '--end', help='Specify end date', default=None)
     parser_ls.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
     parser_ls.add_argument('-S', '--sum', help='Show time summary', action='store_true', default=False)
+    parser_ls.add_argument('-g', '--grep', help='Find time entry descriptions matching this regex', default=None)
     parser_ls.set_defaults(func=list_time_entries)
 
     parser_add = subparsers.add_parser('add', help='Add a new time entry')
@@ -654,7 +666,7 @@ def main():
 
     global args
     args = parser.parse_args(sys.argv[1:])
-    args.func(args)
+    return args.func(args)
 
 if __name__ == "__main__":
     sys.exit(main())
