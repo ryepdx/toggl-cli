@@ -315,10 +315,10 @@ def list_current_time_entry(args):
     """Shows what the user is currently working on (duration is negative)."""
     entry = get_current_time_entry()
     if entry != None:
-        print_time_entry(entry)
+        print format_time_entry(entry)
     else:
         print "You're not working on anything right now."
-    
+
     return 0
 
 def list_projects(args):
@@ -358,8 +358,9 @@ def list_time_entries_date(entries):
 
         duration = 0
         for entry in days[date_str]:
-            print "  ",
-            duration += print_time_entry(entry, verbose=args.verbose_list)
+            duration += get_entry_duration(entry)
+            if not args.quiet:
+                print "   %s" % format_time_entry(entry, verbose=args.verbose_list)
         print "   (%s)" % elapsed_time(int(duration))
         dur_sum += duration
 
@@ -383,8 +384,9 @@ def list_time_entries_project(entries):
         print "@" + proj
         duration = 0
         for entry in projs[proj]:
-            print "  ",
-            duration += print_time_entry(entry, show_proj=False, verbose=args.verbose_list)
+            duration += get_entry_duration(entry)
+            if not args.quiet:
+                print "   %s" % format_time_entry(entry, show_proj=False, verbose=args.verbose_list)
         print "   (%s)" % (elapsed_time(int(duration)))
         dur_sum += duration
 
@@ -432,24 +434,28 @@ def parse_duration(str):
         duration += int(elements[0]) * 60
         elements = elements[1:]
     duration += int(elements[0])
-    
+
     return duration
-        
-def print_time_entry(entry, show_proj=True, verbose=False):
-    """Utility function to print a time entry object and returns the
-       integer duration for this entry."""
-    
-    # If the duration is negative, the entry is currently running so we
-    # have to calculate the duration by adding the current time.
-    is_running = ''
+
+def get_entry_duration(entry):
     e_time = 0
     if entry['duration'] >= 0:
         e_time = int(entry['duration'])
     else:
         is_running = '* '
         e_time = (datetime.datetime.now(pytz.utc) - iso8601.parse_date(entry['start']).astimezone(pytz.utc)).seconds
-    e_time_str = " %s" % elapsed_time(int(e_time), separator='')
-    
+    return e_time
+
+def format_time_entry(entry, show_proj=True, verbose=False):
+    """Utility function to print a time entry object and returns the
+       integer duration for this entry."""
+
+    # If the duration is negative, the entry is currently running so we
+    # have to calculate the duration by adding the current time.
+    is_running = ''
+
+    e_time_str = " %s" % elapsed_time(int(get_entry_duration(entry)), separator='')
+ 
     # Get the project name (if one exists).
     tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
     project_name = ''
@@ -472,12 +478,10 @@ def print_time_entry(entry, show_proj=True, verbose=False):
         else:
             et = iso8601.parse_date(entry['stop']).astimezone(tz).strftime(date_fmt)
 
-        print "[%s] %s%s%s%s (%s - %s)" % (entry['id'], is_running, entry['description'], \
+        return "[%s] %s%s%s%s (%s - %s)" % (entry['id'], is_running, entry['description'], \
                 project_name, e_time_str, st, et)
     else:
-        print "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
-
-    return e_time
+        return "%s%s%s%s" % (is_running, entry['description'], project_name, e_time_str)
 
 def delete_time_entry(args):
     entry_id = args.id
@@ -618,9 +622,10 @@ def main():
     parser_ls.add_argument('-p', '--proj', help='Sort entries by project', action='store_true', default=False)
     parser_ls.add_argument('-s', '--start', help='Specify start date', default=None)
     parser_ls.add_argument('-e', '--end', help='Specify end date', default=None)
-    parser_ls.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
-    parser_ls.add_argument('-S', '--sum', help='Show time summary', action='store_true', default=False)
     parser_ls.add_argument('-g', '--grep', help='Find time entry descriptions matching this regex', default=None)
+    parser_ls.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
+    parser_ls.add_argument('-q', '--quiet', help='Do not show entries, only sums', action='store_true', default=False)
+    parser_ls.add_argument('-S', '--sum', help='Show time summary', action='store_true', default=False)
     parser_ls.set_defaults(func=list_time_entries)
 
     parser_add = subparsers.add_parser('add', help='Add a new time entry')
