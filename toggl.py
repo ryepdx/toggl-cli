@@ -98,6 +98,13 @@ def add_time_entry(args):
     r = requests.post("%s/time_entries.json" % TOGGL_URL, auth=AUTH,
         data=json.dumps(data), headers=headers)
     r.raise_for_status() # raise exception on error
+
+    resp = json.loads(r.text)
+
+    if args.verbose:
+        print json.dumps(resp)
+
+    print "New entry added with id %s" % resp['data']['id']
     
     return 0
 
@@ -507,11 +514,18 @@ def start_time_entry(args):
 
     if args.verbose:
         print json.dumps(data)
-    
+ 
     headers = {'content-type': 'application/json'}
     r = requests.post("%s/time_entries.json" % TOGGL_URL, auth=AUTH,
         data=json.dumps(data), headers=headers)
     r.raise_for_status() # raise exception on error
+    
+    resp = json.loads(r.text)
+
+    if args.verbose:
+        print json.dumps(resp)
+
+    print "New entry started with id %s" % resp['data']['id']
     
     return 0
 
