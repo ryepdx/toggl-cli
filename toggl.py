@@ -45,6 +45,7 @@ from dateutil.parser import *
 TOGGL_URL = "https://www.toggl.com/api/v6"
 DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
 DEFAULT_ENTRY_DATEFMT = '%Y-%m-%d %H:%M%p'
+alias_dict = {}
 
 def add_time_entry(args):
     """
@@ -325,12 +326,19 @@ def list_projects(args):
     """List all projects."""
     response = get_projects()
     for project in response['data']:
-        print "@%s" % project['name']
+        alias = find_alias_key_by_val(project['name'])
+        alias_str = ''
+        if alias is not None:
+            alias_str = '[' + alias + ']'
+
+        print "* %-30s %s" % (project['name'], alias_str)
     return 0
 
 def find_project(proj):
     """Find a project given the unique prefix of the name"""
     response = get_projects()
+    if proj.startswith('@') and proj in alias_dict:
+        proj = alias_dict[proj]
     for project in response['data']:
         if project['name'].startswith(proj):
             return project
@@ -599,6 +607,16 @@ def create_default_cfg():
     with open(os.path.expanduser('~/.togglrc'), 'w') as cfgfile:
         cfg.write(cfgfile)
 
+def find_alias_key_by_val(sval):
+    for key, val in alias_dict.items():
+        if val == sval:
+            return key
+    return None
+
+def build_alias_table():
+    for pair in toggl_cfg.items('aliases'):
+        alias_dict[pair[0]] = pair[1]
+
 def main():
     """Program entry point."""
     
@@ -608,6 +626,9 @@ def main():
         create_default_cfg()
         print "Missing ~/.togglrc. A default has been created for editing."
         return 1
+
+    if toggl_cfg.has_section('aliases'):
+        build_alias_table()
 
     global AUTH, IGNORE_START_TIMES
     AUTH = (toggl_cfg.get('auth', 'username').strip(), toggl_cfg.get('auth', 'password').strip())

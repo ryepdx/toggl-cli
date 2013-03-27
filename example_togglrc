@@ -10,3 +10,7 @@ web_browser_cmd=w3m
 use_mandays=True
 datefmt=%Y-%m-%d (%A)
 entry_datefmt=%Y-%m-%d %H:%M%p
+
+[aliases]
+@mlp=My Long Project Name
+@molp=My Other Long Project Name
