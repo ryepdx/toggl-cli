@@ -622,6 +622,7 @@ def main():
     
     global toggl_cfg
     toggl_cfg = ConfigParser.ConfigParser()
+    toggl_cfg.optionxform = lambda option: option
     if toggl_cfg.read(os.path.expanduser('~/.togglrc')) == []:
         create_default_cfg()
         print "Missing ~/.togglrc. A default has been created for editing."
