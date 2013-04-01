@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 """
 toggl.py
 
@@ -6,9 +6,10 @@ Created by Robert Adams on 2012-04-19.
 Last modified: Thu May 24, 2012 08:37PM
 
 Modified by Morgan Howe (mthowe@gmail.com)
-Last modified: Fri Sep 14, 2012
+Last modified: Mon Apr 1, 2013
 
 Copyright (c) 2012 D. Robert Adams. All rights reserved.
+Copyright (c) 2013 Morgan Howe. All rights reserved.
 """
 
 #############################################################################
@@ -29,7 +30,6 @@ WWW_ADDRESS = "open http://www.toggl.com"
 #############################################################################
 
 import datetime
-import iso8601
 import json
 import os
 import pytz
@@ -37,10 +37,20 @@ import requests
 import sys
 import time
 import urllib
-import ConfigParser
 import argparse
 import re
-from dateutil.parser import *
+import dateutil.parser as date_parser
+
+try:
+    import configparser
+except:
+    import ConfigParser as configparser
+
+import urllib
+try:
+    from urllib.parse import quote as url_quote
+except:
+    from urllib import quote as url_quote
 
 TOGGL_URL = "https://www.toggl.com/api/v6"
 DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
@@ -77,8 +87,10 @@ def add_time_entry(args):
     if args.duration is not None:
         fields['duration'] = parse_duration(args.duration)
     else:
-        start_time = iso8601.parse_date(fields['start_time']).astimezone(pytz.utc)
-        end_time = iso8601.parse_date(parse_time_str(fields['end_time'])).astimezone(pytz.utc)
+        #start_time = iso8601.parse_date(fields['start_time']).astimezone(pytz.utc)
+        start_time = date_parser.parse(fields['start_time']).astimezone(pytz.utc)
+        #end_time = iso8601.parse_date(parse_time_str(fields['end_time'])).astimezone(pytz.utc)
+        end_time = date_parser.parse(parse_time_str(fields['end_time'])).astimezone(pytz.utc)
 
         fields['duration'] = (end_time - start_time).seconds
     
@@ -93,7 +105,7 @@ def add_time_entry(args):
         data['ignore_start_and_stop'] = False
 
     if args.verbose:
-        print json.dumps(data)
+        print(json.dumps(data))
     
     # Send the data.
     headers = {'content-type': 'application/json'}
@@ -104,9 +116,9 @@ def add_time_entry(args):
     resp = json.loads(r.text)
 
     if args.verbose:
-        print json.dumps(resp)
+        print(json.dumps(resp))
 
-    print "New entry added with id %s" % resp['data']['id']
+    print("New entry added with id %s" % resp['data']['id'])
     
     return 0
 
@@ -119,7 +131,7 @@ def edit_time_entry(args):
     upd_entry = get_time_entry(args.id)["data"]
 
     if args.verbose:
-        print json.dumps(upd_entry)
+        print(json.dumps(upd_entry))
 
     fields = {}
 
@@ -144,8 +156,10 @@ def edit_time_entry(args):
         fields['end_time'] = upd_entry['stop']
 
     if args.calc_duration != False:
-        start_time = iso8601.parse_date(fields['start_time']).astimezone(pytz.utc)
-        end_time = iso8601.parse_date(parse_time_str(fields['end_time'])).astimezone(pytz.utc)
+        #start_time = iso8601.parse_date(fields['start_time']).astimezone(pytz.utc)
+        start_time = date_parser.parse(fields['start_time']).astimezone(pytz.utc)
+        #end_time = iso8601.parse_date(parse_time_str(fields['end_time'])).astimezone(pytz.utc)
+        end_time = date_parser.parse(parse_time_str(fields['end_time'])).astimezone(pytz.utc)
 
         fields['duration'] = (end_time - start_time).seconds
     else:
@@ -156,10 +170,10 @@ def edit_time_entry(args):
 
     new_ent = create_time_entry_json(fields)
 
-    url = "%s/time_entries/%s.json" % (TOGGL_URL, urllib.quote(args.id))
+    url = "%s/time_entries/%s.json" % (TOGGL_URL, url_quote(args.id))
 
     if args.verbose:
-        print url
+        print(url)
 
     headers = {'content-type': 'application/json'}
     r = requests.put(url, auth=AUTH, data=json.dumps(new_ent), headers=headers)
@@ -169,7 +183,7 @@ def edit_time_entry(args):
             
 def parse_time_str(timestr):
     tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-    tmp = parse(timestr)
+    tmp = date_parser.parse(timestr)
     if tmp.tzinfo is None:
         tmp = tz.localize(tmp)
     return tmp.astimezone(pytz.utc).isoformat()
@@ -231,7 +245,7 @@ def elapsed_time(seconds, suffixes=['y','w','d','h','m','s'], add_s=False, separ
     # for each time piece, grab the value and remaining seconds, and add it to
     # the time string
     for suffix, length in parts:
-        value = seconds / length
+        value = int(seconds / length)
         if value > 0:
             seconds = seconds % length
             time.append('%s%s' % (str(value),
@@ -256,7 +270,7 @@ def get_projects():
     
     url = "%s/projects.json" % TOGGL_URL
     if args.verbose:
-        print url
+        print(url)
     r = requests.get(url, auth=AUTH)
     r.raise_for_status() # raise exception on error
     return json.loads(r.text)
@@ -266,9 +280,9 @@ def get_time_entry(entry_id):
     # Toggle has the start/end dates creating a confusing
     # backwards range. Swap them here.
     url = "%s/time_entries/%s.json" % \
-        (TOGGL_URL, urllib.quote(entry_id))
+        (TOGGL_URL, url_quote(entry_id))
     if args.verbose:
-        print url
+        print(url)
     r = requests.get(url, auth=AUTH)
     r.raise_for_status() # raise exception on error
     
@@ -282,7 +296,7 @@ def get_time_entries(start=None, end=None):
     end_date = None
     # Construct the start and end dates. Toggl seems to want these in UTC.
     if start != None:
-        lt = tz.localize(parse(args.start))
+        lt = tz.localize(date_parser.parse(args.start))
         end_date = lt.astimezone(pytz.utc)
     else:
         endday = datetime.datetime.now(pytz.utc)
@@ -294,7 +308,7 @@ def get_time_entries(start=None, end=None):
     start_date = None
     # The end date is actually earlier in time than start date
     if end != None:
-        lt = tz.localize(parse(args.end))
+        lt = tz.localize(date_parser.parse(args.end))
         start_date = lt.astimezone(pytz.utc)
     else:
         today = datetime.datetime.now()
@@ -304,9 +318,9 @@ def get_time_entries(start=None, end=None):
     # Toggle has the start/end dates creating a confusing
     # backwards range. Swap them here.
     url = "%s/time_entries.json?start_date=%s&end_date=%s" % \
-        (TOGGL_URL, urllib.quote(str(end_date)), urllib.quote(str(start_date)))
+        (TOGGL_URL, url_quote(str(end_date)), url_quote(str(start_date)))
     if args.verbose:
-        print url
+        print(url)
     r = requests.get(url, auth=AUTH)
     r.raise_for_status() # raise exception on error
     
@@ -316,9 +330,9 @@ def list_current_time_entry(args):
     """Shows what the user is currently working on (duration is negative)."""
     entry = get_current_time_entry()
     if entry != None:
-        print format_time_entry(entry)
+        print(format_time_entry(entry))
     else:
-        print "You're not working on anything right now."
+        print("You're not working on anything right now.")
 
     return 0
 
@@ -331,7 +345,7 @@ def list_projects(args):
         if alias is not None:
             alias_str = '[' + alias + ']'
 
-        print "* %-30s %s" % (project['name'], alias_str)
+        print("* %-30s %s" % (project['name'], alias_str))
     return 0
 
 def find_project(proj):
@@ -342,7 +356,7 @@ def find_project(proj):
     for project in response['data']:
         if project['name'].startswith(proj):
             return project
-    print "Could not find project!"
+    print("Could not find project!")
     sys.exit(1)
 
 def list_time_entries_date(entries):
@@ -354,7 +368,8 @@ def list_time_entries_date(entries):
     days = { }
     for entry in entries:
         tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-        start_time = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
+        #start_time = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
+        start_time = date_parser.parse(entry['start']).astimezone(tz).strftime(date_fmt)
         if start_time not in days:
             days[start_time] = []
         days[start_time].append(entry)
@@ -362,18 +377,18 @@ def list_time_entries_date(entries):
     dur_sum = 0
     # For each day, print the entries, then sum the times.
     for date_str in sorted(days.keys()):
-        print date_str
+        print(date_str)
 
         duration = 0
         for entry in days[date_str]:
             duration += get_entry_duration(entry)
             if not args.quiet:
-                print "   %s" % format_time_entry(entry, verbose=args.verbose_list)
-        print "   (%s)" % elapsed_time(int(duration))
+                print("   %s" % format_time_entry(entry, verbose=args.verbose_list))
+        print("   (%s)" % elapsed_time(int(duration)))
         dur_sum += duration
 
     if args.sum:
-        print "Total time: %s" % elapsed_time(dur_sum)
+        print("Total time: %s" % elapsed_time(dur_sum))
     return 0
 
 def list_time_entries_project(entries):
@@ -389,17 +404,17 @@ def list_time_entries_project(entries):
     
     dur_sum = 0
     for proj in projs.keys():
-        print "@" + proj
+        print("@" + proj)
         duration = 0
         for entry in projs[proj]:
             duration += get_entry_duration(entry)
             if not args.quiet:
-                print "   %s" % format_time_entry(entry, show_proj=False, verbose=args.verbose_list)
-        print "   (%s)" % (elapsed_time(int(duration)))
+                print("   %s" % format_time_entry(entry, show_proj=False, verbose=args.verbose_list))
+        print("   (%s)" % (elapsed_time(int(duration))))
         dur_sum += duration
 
     if args.sum:
-        print "Total time: %s" % elapsed_time(dur_sum)
+        print("Total time: %s" % elapsed_time(dur_sum))
     return 0
 
 def filter_match(entry, pattern):
@@ -451,7 +466,8 @@ def get_entry_duration(entry):
         e_time = int(entry['duration'])
     else:
         is_running = '* '
-        e_time = (datetime.datetime.now(pytz.utc) - iso8601.parse_date(entry['start']).astimezone(pytz.utc)).seconds
+        #e_time = (datetime.datetime.now(pytz.utc) - iso8601.parse_date(entry['start']).astimezone(pytz.utc)).seconds
+        e_time = (datetime.datetime.now(pytz.utc) - date_parser.parse(entry['start']).astimezone(pytz.utc)).seconds
     return e_time
 
 def format_time_entry(entry, show_proj=True, verbose=False):
@@ -472,7 +488,8 @@ def format_time_entry(entry, show_proj=True, verbose=False):
     elif show_proj:
         project_name = " @%s" % entry['project']['name']
     else:
-        start_time = iso8601.parse_date(entry['start']).astimezone(tz)
+        #start_time = iso8601.parse_date(entry['start']).astimezone(tz)
+        start_time = date_parser.parse(entry['start']).astimezone(tz)
         project_name = " %s" % start_time.date()
 
     if verbose:
@@ -480,11 +497,13 @@ def format_time_entry(entry, show_proj=True, verbose=False):
         if toggl_cfg.has_option('options', 'entry_datefmt'):
             date_fmt = toggl_cfg.get('options', 'entry_datefmt')
 
-        st = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
+        #st = iso8601.parse_date(entry['start']).astimezone(tz).strftime(date_fmt)
+        st = date_parser.parse(entry['start']).astimezone(tz).strftime(date_fmt)
         if entry['stop'] == None:
             et = ""
         else:
-            et = iso8601.parse_date(entry['stop']).astimezone(tz).strftime(date_fmt)
+            #et = iso8601.parse_date(entry['stop']).astimezone(tz).strftime(date_fmt)
+            et = date_parser.parse(entry['stop']).astimezone(tz).strftime(date_fmt)
 
         return "[%s] %s%s%s%s (%s - %s)" % (entry['id'], is_running, entry['description'], \
                 project_name, e_time_str, st, et)
@@ -494,13 +513,13 @@ def format_time_entry(entry, show_proj=True, verbose=False):
 def delete_time_entry(args):
     entry_id = args.id
 
-    print "Deleting entry %s" % entry_id
+    print("Deleting entry %s" % entry_id)
 
     headers = {'content-type': 'application/json'}
-    r = requests.delete("%s/time_entries/%s.json" % (TOGGL_URL, urllib.quote(entry_id)), auth=AUTH,
+    r = requests.delete("%s/time_entries/%s.json" % (TOGGL_URL, url_quote(entry_id)), auth=AUTH,
         data=None, headers=headers)
     if r.status_code == 404:
-        print "Entry %s does not exist!" % entry_id
+        print("Entry %s does not exist!" % entry_id)
         return 1
     r.raise_for_status() # raise exception on error
 
@@ -536,7 +555,7 @@ def start_time_entry(args):
     data = create_time_entry_json(fields)
 
     if args.verbose:
-        print json.dumps(data)
+        print(json.dumps(data))
  
     headers = {'content-type': 'application/json'}
     r = requests.post("%s/time_entries.json" % TOGGL_URL, auth=AUTH,
@@ -546,9 +565,9 @@ def start_time_entry(args):
     resp = json.loads(r.text)
 
     if args.verbose:
-        print json.dumps(resp)
+        print(json.dumps(resp))
 
-    print "New entry started with id %s" % resp['data']['id']
+    print("New entry started with id %s" % resp['data']['id'])
     
     return 0
 
@@ -558,11 +577,12 @@ def stop_time_entry(args):
     entry = get_current_time_entry()
     if entry != None:
         # Get the start time from the entry, converted to UTC.
-        start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc)
+        #start_time = iso8601.parse_date(entry['start']).astimezone(pytz.utc)
+        start_time = date_parser.parse(entry['start']).astimezone(pytz.utc)
 
         if args.time:
             tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-            stop_time = tz.localize(parse(args.time)).astimezone(pytz.utc)
+            stop_time = tz.localize(date_parser.parse(args.time)).astimezone(pytz.utc)
         else:
             # Get stop time(now) in UTC.
             stop_time = datetime.datetime.now(pytz.utc)
@@ -575,13 +595,13 @@ def stop_time_entry(args):
         url = "%s/time_entries/%d.json" % (TOGGL_URL, entry['id'])
 
         if args.verbose:
-            print url
+            print(url)
 
         headers = {'content-type': 'application/json'}
         r = requests.put(url, auth=AUTH, data=json.dumps(data), headers=headers)
         r.raise_for_status() # raise exception on error
     else:
-        print >> sys.stderr, "You're not working on anything right now."
+        print("You're not working on anything right now.")
         return 1
 
     return 0
@@ -593,7 +613,7 @@ def visit_web(args):
         os.system(toggl_cfg.get('options', 'web_browser_cmd') + ' ' + WWW_ADDRESS)
 
 def create_default_cfg():
-    cfg = ConfigParser.RawConfigParser()
+    cfg = configparser.RawConfigParser()
     cfg.add_section('auth')
     cfg.set('auth', 'username', 'user@example.com')
     cfg.set('auth', 'password', 'secretpasswd')
@@ -621,11 +641,15 @@ def main():
     """Program entry point."""
     
     global toggl_cfg
-    toggl_cfg = ConfigParser.ConfigParser()
+    try:
+        toggl_cfg = configparser.ConfigParser(interpolation=None)
+    except:
+        toggl_cfg = configparser.ConfigParser()
+
     toggl_cfg.optionxform = lambda option: option
     if toggl_cfg.read(os.path.expanduser('~/.togglrc')) == []:
         create_default_cfg()
-        print "Missing ~/.togglrc. A default has been created for editing."
+        print("Missing ~/.togglrc. A default has been created for editing.")
         return 1
 
     if toggl_cfg.has_section('aliases'):

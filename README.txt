@@ -42,7 +42,7 @@ arguments listed above.
 Requirements
 ------------
 
-* iso8601 module
+* requests module
 * pytz module
 * dateutil module
 
