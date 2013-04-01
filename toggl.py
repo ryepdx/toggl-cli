@@ -58,6 +58,9 @@ DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
 DEFAULT_ENTRY_DATEFMT = '%Y-%m-%d %H:%M%p'
 alias_dict = {}
 
+def json_format(text):
+    return json.dumps(text, sort_keys=False, indent=4, separators=(',', ':'))
+
 def add_time_entry(args):
     """
     Creates a completed time entry.
@@ -98,7 +101,7 @@ def add_time_entry(args):
     resp = toggl.add_time_entry(entry)
 
     if args.verbose:
-        print(json.dumps(resp))
+        print(json_format(resp))
 
     print("New entry added with id %s" % resp.data['id'])
     
@@ -438,7 +441,7 @@ def start_time_entry(args):
     resp = toggl.add_time_entry(entry)
 
     if args.verbose:
-        print(json.dumps(resp))
+        print(json_format(resp))
 
     print("New entry started with id %s" % resp.data['id'])
     
@@ -468,6 +471,23 @@ def stop_time_entry(args):
     else:
         print("You're not working on anything right now.")
         return False
+
+    return True
+
+def list_workspaces(args):
+    if args.list:
+        wsp_list = toggl.get_workspaces()
+        for wsp in wsp_list:
+            print("* [%s] %s [Profile: (%s) Admin: (%s)]" % \
+                    (wsp.id, wsp.name, wsp.profile_name, "yes" if wsp.is_admin else "no"))
+    elif args.user_list:
+        if not args.id:
+            print("Workspace ID is required to list users!")
+            return False
+        user_list = toggl.get_workspace_users(args.id)
+        for user in user_list:
+            print("* %s <%s>" % (user.fullname, user.email))
+        print("Total Users: %d" % len(user_list))
 
     return True
 
@@ -579,6 +599,12 @@ def main():
     parser_rm = subparsers.add_parser('rm', help='Remove a time entry')
     parser_rm.add_argument('-i', '--id', help='The id to remove', required=True)
     parser_rm.set_defaults(func=delete_time_entry)
+
+    parser_wspace = subparsers.add_parser('wksp', help='List workspaces')
+    parser_wspace.add_argument('-i', '--id', help='The workspace id')
+    parser_wspace.add_argument('-l', '--list', help='List workspaces', action='store_true', default=False)
+    parser_wspace.add_argument('-u', '--user-list', help='List workspace users', action='store_true', default=False)
+    parser_wspace.set_defaults(func=list_workspaces)
 
     global args
     args = parser.parse_args(sys.argv[1:])

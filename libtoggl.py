@@ -11,14 +11,19 @@ KEY_NAME        = 'name'
 KEY_DESC        = 'description'
 KEY_PROJ        = 'project'
 KEY_START       = 'start'
-KEY_STOP         = 'stop'
+KEY_STOP        = 'stop'
 KEY_DURATION    = 'duration'
+KEY_PROFILE     = 'profile_name'
+KEY_ISADMIN     = 'current_user_is_admin'
+KEY_FULLNAME    = 'fullname'
+KEY_EMAIL       = 'email'
 
 class TogglApi:
     def __init__(self, url, auth, verbose=False):
         self.base_url = url
         self.auth = auth
         self.verbose = verbose
+        self.headers = {'content-type': 'application/json'}
 
     def get_projects(self):
         """Fetches the projects as JSON objects."""
@@ -75,13 +80,12 @@ class TogglApi:
 
     def add_time_entry(self, entry):
         """Add the given entry as a new time entry"""
-        headers = {'content-type': 'application/json'}
         data = entry.to_json()
         url = "%s/time_entries.json" % self.base_url
         if self.verbose:
             print(url)
         r = requests.post(url, auth=self.auth,
-            data=json.dumps(data), headers=headers)
+            data=json.dumps(data), headers=self.headers)
         r.raise_for_status() # raise exception on error
         
         if self.verbose:
@@ -91,12 +95,11 @@ class TogglApi:
 
     def update_time_entry(self, entry):
         """Update the given time entry"""
-        headers = {'content-type': 'application/json'}
         data = entry.to_json()
         url = "%s/time_entries/%d.json" % (self.base_url, entry.id)
         if self.verbose:
             print(url)
-        r = requests.put(url, auth=self.auth, data=json.dumps(data), headers=headers)
+        r = requests.put(url, auth=self.auth, data=json.dumps(data), headers=self.headers)
         if r.status_code == 404:
             return TogglResponse(False)
         r.raise_for_status() # raise exception on error
@@ -108,11 +111,10 @@ class TogglApi:
 
     def delete_time_entry(self, entry_id):
         """Delete the time entry with the specified id"""
-        headers = {'content-type': 'application/json'}
         url = "%s/time_entries/%s.json" % (self.base_url, url_quote(entry_id))
         if self.verbose:
             print(url)
-        r = requests.delete(url, auth=self.auth, data=None, headers=headers)
+        r = requests.delete(url, auth=self.auth, data=None, headers=self.headers)
         if r.status_code == 404:
             return TogglResponse(False)
         r.raise_for_status() # raise exception on error
@@ -121,6 +123,30 @@ class TogglApi:
             print(r.text)
 
         return TogglResponse(True, json.loads(r.text))
+
+    def get_workspaces(self):
+        url = "%s/workspaces.json" % self.base_url
+        if self.verbose:
+            print(url)
+        r = requests.get(url, auth=self.auth)
+        r.raise_for_status() # raise exception on error
+        
+        if self.verbose:
+            print(r.text)
+
+        return [TogglWorkspace(w) for w in json.loads(r.text)['data']]
+
+    def get_workspace_users(self, wsp_id):
+        url = "%s/workspaces/%s/users.json" % (self.base_url, wsp_id)
+        if self.verbose:
+            print(url)
+        r = requests.get(url, auth=self.auth)
+        r.raise_for_status() # raise exception on error
+
+        if self.verbose:
+            print(r.text)
+
+        return [TogglUser(u) for u in json.loads(r.text)['data']]
 
 class TogglResponse:
     def __init__(self, success, data=None):
@@ -134,6 +160,38 @@ class TogglResponse:
     @property
     def data(self):
         return self._data['data']
+
+class TogglWorkspace:
+    def __init__(self, fields):
+        self.fields = fields
+
+    @property
+    def id(self):
+        return self.fields[KEY_ID]
+
+    @property
+    def profile_name(self):
+        return self.fields[KEY_PROFILE]
+
+    @property
+    def name(self):
+        return self.fields[KEY_NAME]
+
+    @property
+    def is_admin(self):
+        return self.fields[KEY_ISADMIN]
+
+class TogglUser:
+    def __init__(self, fields):
+        self.fields = fields
+
+    @property
+    def fullname(self):
+        return self.fields[KEY_FULLNAME]
+
+    @property
+    def email(self):
+        return self.fields[KEY_EMAIL]
 
 class TogglProject:
     def __init__(self, fields=None):
