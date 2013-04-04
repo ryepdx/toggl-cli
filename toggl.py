@@ -274,7 +274,7 @@ def list_workspaces(args):
     for wsp in wsp_list:
         wsp_id = ""
         if args.verbose_list:
-            wsp_name = "[%s] %s" % (wsp.id, wsp.name)
+            wsp_id = "[%s] " % (wsp.id)
 
         print("* %s%s [Profile: (%s) Admin: (%s)]" %
                 (wsp_id, wsp.name, wsp.profile_name, "yes" if wsp.is_admin else "no"))

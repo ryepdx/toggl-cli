@@ -269,8 +269,13 @@ class TogglResponse:
         return self._data['data']
 
 class TogglObject:
-    def __init__(self, fields):
-        self.fields = fields
+    def __init__(self, fields=None):
+        if fields is not None:
+            self.fields = fields
+        else:
+            self.fields = {}
+            self.id = None
+            self.name = None
 
     @property
     def id(self):
@@ -284,21 +289,13 @@ class TogglObject:
     def name(self, value):
         self.fields[KEY_NAME] = value
 
-class TogglWorkspace:
-    def __init__(self, fields):
-        self.fields = fields
-
-    @property
-    def id(self):
-        return self.fields[KEY_ID]
+class TogglWorkspace(TogglObject):
+    def __init__(self, fields=None):
+        TogglObject.__init__(self, fields)
 
     @property
     def profile_name(self):
         return self.fields[KEY_PROFILE]
-
-    @property
-    def name(self):
-        return self.fields[KEY_NAME]
 
     @property
     def is_admin(self):
@@ -310,9 +307,9 @@ class TogglWorkspace:
                  KEY_NAME : self.name
                }
 
-class TogglUser:
-    def __init__(self, fields):
-        self.fields = fields
+class TogglUser(TogglObject):
+    def __init__(self, fields=None):
+        TogglObject.__init__(self, fields)
 
     @property
     def fullname(self):
@@ -325,10 +322,7 @@ class TogglUser:
 class TogglClient(TogglObject):
     def __init__(self, fields=None):
         TogglObject.__init__(self, fields)
-        if fields is not None:
-            self.fields = fields
-        else:
-            self.fields = {}
+        if fields is None:
             self.hourly_rate = None
             self.currency = None
 
@@ -356,10 +350,10 @@ class TogglClient(TogglObject):
                     KEY_CURRENCY : self.currency,
                }
 
-class TogglProject:
+class TogglProject(TogglObject):
     def __init__(self, fields=None):
+        TogglObject.__init__(self, fields)
         if fields is not None:
-            self.fields = fields
             if KEY_WORKSPACE in fields:
                 self._workspace = TogglWorkspace(fields[KEY_WORKSPACE])
             else:
@@ -371,7 +365,6 @@ class TogglProject:
         else:
             self._workspace = None
             self._client = None
-            self.fields = {}
             self.id = None
             self.name = None
             self.billable = None
