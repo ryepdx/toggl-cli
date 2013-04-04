@@ -9,7 +9,7 @@ except:
 KEY_ID          = 'id'
 KEY_NAME        = 'name'
 KEY_DESC        = 'description'
-KEY_PROJ        = 'project'
+KEY_PROJECT        = 'project'
 KEY_START       = 'start'
 KEY_STOP        = 'stop'
 KEY_DURATION    = 'duration'
@@ -23,7 +23,11 @@ KEY_AUTOCALCWH  = 'automatically_calculate_estimated_workhours'
 KEY_HRLYRATE    = 'hourly_rate'
 KEY_CURRENCY    = 'currency'
 KEY_WORKSPACE   = 'workspace'
+KEY_CLIENT      = 'client'
 KEY_ISACTIVE    = 'is_active'
+KEY_TIMEENTRY   = 'time_entry'
+KEY_CREATEDW    = 'created_with'
+KEY_IGNTIMES    = 'ignore_start_and_stop'
 
 class TogglApi:
     def __init__(self, url, auth, verbose=False):
@@ -32,6 +36,11 @@ class TogglApi:
         self.verbose = verbose
         self.headers = {'content-type': 'application/json'}
 
+    def _raise_if_error(self, r):
+        if r.status_code != 200:
+            print("Error reason: " + r.text)
+        r.raise_for_status()
+
     def get_projects(self):
         """Fetches the projects as JSON objects."""
         
@@ -39,7 +48,7 @@ class TogglApi:
         if self.verbose:
             print(url)
         r = requests.get(url, auth=self.auth)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
 
         if self.verbose:
             print(r.text)
@@ -50,14 +59,14 @@ class TogglApi:
         """Adds the given project as a new project."""
 
         url = "%s/projects.json" % self.base_url
-        data = proj.to_json()
+        data = { KEY_PROJECT : proj.to_json() }
 
         if self.verbose:
             print(url)
             print(data)
         r = requests.post(url, auth=self.auth,
             data=json.dumps(data), headers=self.headers)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
         
         if self.verbose:
             print(r.text)
@@ -75,7 +84,7 @@ class TogglApi:
             print(data)
         r = requests.put(url, auth=self.auth,
             data=json.dumps(data), headers=self.headers)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
         
         if self.verbose:
             print(r.text)
@@ -93,7 +102,7 @@ class TogglApi:
             print(data)
         r = requests.put(url, auth=self.auth,
             data=json.dumps(data), headers=self.headers)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
         
         if self.verbose:
             print(r.text)
@@ -111,7 +120,7 @@ class TogglApi:
             print(data)
         r = requests.put(url, auth=self.auth,
             data=json.dumps(data), headers=self.headers)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
         
         if self.verbose:
             print(r.text)
@@ -131,7 +140,7 @@ class TogglApi:
         if self.verbose:
             print(url)
         r = requests.get(url, auth=self.auth)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
 
         if self.verbose:
             print(r.text)
@@ -150,7 +159,7 @@ class TogglApi:
         r = requests.get(url, auth=self.auth)
         if r.status_code == 404:
             return None 
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
         
         if self.verbose:
             print(r.text)
@@ -159,14 +168,17 @@ class TogglApi:
 
     def add_time_entry(self, entry):
         """Add the given entry as a new time entry"""
+
         url = "%s/time_entries.json" % self.base_url
-        data = entry.to_json()
+        data = { KEY_TIMEENTRY : entry.to_json() }
 
         if self.verbose:
             print(url)
+            print(data)
+
         r = requests.post(url, auth=self.auth,
             data=json.dumps(data), headers=self.headers)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
         
         if self.verbose:
             print(r.text)
@@ -176,14 +188,16 @@ class TogglApi:
     def update_time_entry(self, entry):
         """Update the given time entry"""
         url = "%s/time_entries/%d.json" % (self.base_url, entry.id)
-        data = entry.to_json()
+        data = { KEY_TIMEENTRY : entry.to_json() }
 
         if self.verbose:
             print(url)
+            print(data)
+
         r = requests.put(url, auth=self.auth, data=json.dumps(data), headers=self.headers)
         if r.status_code == 404:
             return TogglResponse(False)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
 
         if self.verbose:
             print(r.text)
@@ -198,7 +212,7 @@ class TogglApi:
         r = requests.delete(url, auth=self.auth, data=None, headers=self.headers)
         if r.status_code == 404:
             return TogglResponse(False)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
 
         if self.verbose:
             print(r.text)
@@ -210,7 +224,7 @@ class TogglApi:
         if self.verbose:
             print(url)
         r = requests.get(url, auth=self.auth)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
         
         if self.verbose:
             print(r.text)
@@ -222,7 +236,7 @@ class TogglApi:
         if self.verbose:
             print(url)
         r = requests.get(url, auth=self.auth)
-        r.raise_for_status() # raise exception on error
+        self._raise_if_error(r)
 
         if self.verbose:
             print(r.text)
@@ -234,7 +248,7 @@ class TogglApi:
         if self.verbose:
             print(url)
         r = requests.get(url, auth=self.auth)
-        r.raise_for_status()
+        self._raise_if_error(r)
 
         if self.verbose:
             print(r.text)
@@ -255,6 +269,9 @@ class TogglResponse:
         return self._data['data']
 
 class TogglObject:
+    def __init__(self, fields):
+        self.fields = fields
+
     @property
     def id(self):
         return self.fields[KEY_ID]
@@ -307,10 +324,13 @@ class TogglUser:
 
 class TogglClient(TogglObject):
     def __init__(self, fields=None):
+        TogglObject.__init__(self, fields)
         if fields is not None:
             self.fields = fields
         else:
             self.fields = {}
+            self.hourly_rate = None
+            self.currency = None
 
     @property
     def hourly_rate(self):
@@ -328,6 +348,14 @@ class TogglClient(TogglObject):
     def currency(self, value):
         self.fields[KEY_CURRENCY] = value
 
+    def to_json(self):
+        return {
+                    KEY_ID : self.id,
+                    KEY_NAME : self.name,
+                    KEY_HRLYRATE : self.hourly_rate,
+                    KEY_CURRENCY : self.currency,
+               }
+
 class TogglProject:
     def __init__(self, fields=None):
         if fields is not None:
@@ -336,8 +364,13 @@ class TogglProject:
                 self._workspace = TogglWorkspace(fields[KEY_WORKSPACE])
             else:
                 self._workspace = None
+            if KEY_CLIENT in fields:
+                self._client = TogglClient(fields[KEY_CLIENT])
+            else:
+                self._client = None
         else:
             self._workspace = None
+            self._client = None
             self.fields = {}
             self.id = None
             self.name = None
@@ -369,6 +402,14 @@ class TogglProject:
     @workspace.setter
     def workspace(self, value):
         self._workspace = value
+
+    @property
+    def client(self):
+        return self._client
+
+    @client.setter
+    def client(self, value):
+        self._client = value
 
     @property
     def billable(self):
@@ -403,16 +444,17 @@ class TogglProject:
         self.fields[KEY_ISACTIVE] = value
 
     def to_json(self):
-        return { 'project' :
-                {
+        return {
                     KEY_ID : self.id,
                     KEY_NAME : self.name,
                     KEY_BILLABLE : self.billable,
                     KEY_ESTWKHRS : self.estimated_workhours,
-                    KEY_AUTOCALCWH : self.autocalc_estimated_workhours,
+                    # The api says this field is supported, but it always causes
+                    # an internal server error. Ignore it for now.
+                    #KEY_AUTOCALCWH : self.autocalc_estimated_workhours,
                     KEY_WORKSPACE : self.workspace.to_json(),
+                    KEY_CLIENT : self.client.to_json() if self.client is not None else None,
                     KEY_ISACTIVE : self.is_active
-                 }
                }
 
 class TogglEntry:
@@ -420,8 +462,8 @@ class TogglEntry:
         self.ignore_times = False
         if fields is not None:
             self.fields = fields
-            if KEY_PROJ in fields:
-                self.project = TogglProject(fields[KEY_PROJ])
+            if KEY_PROJECT in fields:
+                self.project = TogglProject(fields[KEY_PROJECT])
             else:
                 self.project = None
         else:
@@ -496,16 +538,15 @@ class TogglEntry:
         """
         
         # Create JSON object to send to toggl.
-        data = { 'time_entry' : \
-            { 'duration' : self.duration,
-              'billable' : False,
-              'start' : self.start_time,
-              'stop' : self.stop_time,
-              'description' : self.desc,
-              'created_with' : 'toggl-cli',
-              'ignore_start_and_stop' : self.ignore_start_and_stop,
-              'project' : self.project.to_json() if self.project is not None else None
-            }
-        }
+        data = {
+                KEY_DURATION : self.duration,
+                KEY_BILLABLE : False,
+                KEY_START : self.start_time,
+                KEY_STOP : self.stop_time,
+                KEY_DESC : self.desc,
+                KEY_CREATEDW : 'toggl-cli',
+                KEY_IGNTIMES : self.ignore_start_and_stop,
+                KEY_PROJECT : self.project.to_json() if self.project is not None else None
+               }
         
         return data

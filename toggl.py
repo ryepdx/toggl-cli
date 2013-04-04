@@ -265,7 +265,7 @@ def find_project(proj):
     if proj.startswith('@') and proj in alias_dict:
         proj = alias_dict[proj]
     for project in proj_list:
-        if project.id == int(proj) or project.name.startswith(proj):
+        if str(project.id) == proj or project.name.startswith(proj):
             return project
     return None
 
@@ -282,7 +282,7 @@ def list_workspaces(args):
 def find_workspace(wkspc):
     wsp_list = toggl.get_workspaces()
     for wsp in wsp_list:
-        if wsp.id == wkspc or wsp.name.startswith(wkspc):
+        if str(wsp.id) == wkspc or wsp.name.startswith(wkspc):
             return wsp
     return None
 
@@ -295,6 +295,13 @@ def list_clients(args):
 
         print("* %s%s [Hourly Rate: (%s) Currency: (%s)]" %
                 (cl_id, cl.name, cl.hourly_rate, cl.currency))
+
+def find_client(client):
+    cli_list = toggl.get_clients()
+    for cli in cli_list:
+        if str(cli.id) == client or cli.name.startswith(client):
+            return cli
+    return None
 
 def list_time_entries_date(entries):
     date_fmt = DEFAULT_DATEFMT
@@ -474,7 +481,7 @@ def start_time_entry(args):
     resp = toggl.add_time_entry(entry)
 
     if args.verbose:
-        print(json_format(resp))
+        print(json_format(resp.data))
 
     print("New entry started with id %s" % resp.data['id'])
     
@@ -525,6 +532,13 @@ def cmd_project(args):
         p.autocalc_estimated_workhours = args.auto_calc
         p.workspace = wksp
 
+        if args.client is not None:
+            cli = find_client(args.client)
+            if cli is None:
+                print("Could not find specified client!")
+                return False
+            p.client = cli
+
         toggl.add_project(p)
     elif args.update:
         if not args.id:
@@ -549,6 +563,12 @@ def cmd_project(args):
                 print("Could not find specified workspace!")
                 return False
             p.workspace = wksp
+        if args.client is not None:
+            cli = find_client(args.client)
+            if cli is None:
+                print("Could not find specified client!")
+                return False
+            p.client = cli
 
         toggl.update_project(p)
     elif args.archive:
@@ -673,13 +693,13 @@ def main():
     parser_proj.add_argument('-A', '--show-archived', help="Override the show-archived setting", action='store_true', default=None)
     parser_proj.add_argument('-a', '--add', help="Add a new project entry", action='store_true', default=False)
     parser_proj.add_argument('-u', '--update', help="Update an existing project entry", action='store_true', default=False)
-    parser_proj.add_argument('-r', '--archive', help="Archive a project entry", default=None)
-    parser_proj.add_argument('-o', '--reopen', help="Reopen an archived project entry", default=None)
-    parser_proj.add_argument('-b', '--billable', help="Set the project's billable value", type=bool, default=None)
+    parser_proj.add_argument('-r', '--archive', help="Archive a project entry", default=None, metavar='IDLIST')
+    parser_proj.add_argument('-o', '--reopen', help="Reopen an archived project entry", default=None, metavar='IDLIST')
+    parser_proj.add_argument('-b', '--billable', help="Set the project's billable value", type=bool, default=None, choices=[True, False])
     parser_proj.add_argument('-n', '--name', help="Set the project's name", default=None)
     parser_proj.add_argument('-i', '--id', help="Specify the project id", default=None)
-    parser_proj.add_argument('-c', '--client', help="Set the project's client", default=None)
-    parser_proj.add_argument('-w', '--workspace', help="Set the project's client", default=None)
+    parser_proj.add_argument('-c', '--client', help="Set the project's client", default=None, metavar='NAME/ID')
+    parser_proj.add_argument('-w', '--workspace', help="Set the project's workspace", default=None, metavar='NAME/ID')
     parser_proj.add_argument('-e', '--estimated-workhours', help="Set the project's estimated work hours", type=int, default=None)
     parser_proj.add_argument('-C', '--auto-calc', help="Automatically calculate estimated work hours", type=bool, default=None)
     parser_proj.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
