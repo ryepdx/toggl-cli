@@ -47,12 +47,6 @@ try:
 except:
     import ConfigParser as configparser
 
-import urllib
-try:
-    from urllib.parse import quote as url_quote
-except:
-    from urllib import quote as url_quote
-
 TOGGL_URL = "https://www.toggl.com/api/v6"
 DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
 DEFAULT_ENTRY_DATEFMT = '%Y-%m-%d %H:%M%p'
@@ -236,7 +230,7 @@ def list_current_time_entry(args):
     """Shows what the user is currently working on (duration is negative)."""
     entry = get_current_time_entry()
     if entry != None:
-        print(format_time_entry(entry))
+        print(format_time_entry(entry, verbose=args.verbose_list))
     else:
         print("You're not working on anything right now.")
 
@@ -245,13 +239,17 @@ def list_current_time_entry(args):
 def list_projects(args):
     """List all projects."""
     proj_list = toggl.get_projects()
-    for project in proj_list:
-        alias = find_alias_key_by_val(project.name)
-        alias_str = ''
-        if alias is not None:
-            alias_str = '[' + alias + ']'
+    for proj in proj_list:
+        proj_id = ""
+        if args.verbose_list:
+            proj_id = "[%s] " % (proj.id)
 
-        print("* %-30s %s" % (project.name, alias_str))
+        alias = find_alias_key_by_val(proj.name)
+        alias_str = ""
+        if alias is not None:
+            alias_str = "(%s)" % alias
+
+        print("%s %s%-10s %s" % ('*' if proj.is_active else '-', proj_id, alias_str, proj.name))
     return True
 
 def find_project(proj):
@@ -260,8 +258,36 @@ def find_project(proj):
     if proj.startswith('@') and proj in alias_dict:
         proj = alias_dict[proj]
     for project in proj_list:
-        if project.name.startswith(proj):
+        if project.id == int(proj) or project.name.startswith(proj):
             return project
+    return None
+
+def list_workspaces(args):
+    wsp_list = toggl.get_workspaces()
+    for wsp in wsp_list:
+        wsp_id = ""
+        if args.verbose_list:
+            wsp_name = "[%s] %s" % (wsp.id, wsp.name)
+
+        print("* %s%s [Profile: (%s) Admin: (%s)]" %
+                (wsp_id, wsp.name, wsp.profile_name, "yes" if wsp.is_admin else "no"))
+
+def find_workspace(wkspc):
+    wsp_list = toggl.get_workspaces()
+    for wsp in wsp_list:
+        if wsp.id == wkspc or wsp.name.startswith(wkspc):
+            return wsp
+    return None
+
+def list_clients(args):
+    cl_list = toggl.get_clients()
+    for cl in cl_list:
+        cl_id = ""
+        if args.verbose_list:
+            cl_id  = "[%s] " % (cl.id)
+
+        print("* %s%s [Hourly Rate: (%s) Currency: (%s)]" %
+                (cl_id, cl.name, cl.hourly_rate, cl.currency))
 
 def list_time_entries_date(entries):
     date_fmt = DEFAULT_DATEFMT
@@ -474,13 +500,61 @@ def stop_time_entry(args):
 
     return True
 
-def list_workspaces(args):
-    if args.list:
-        wsp_list = toggl.get_workspaces()
-        for wsp in wsp_list:
-            print("* [%s] %s [Profile: (%s) Admin: (%s)]" % \
-                    (wsp.id, wsp.name, wsp.profile_name, "yes" if wsp.is_admin else "no"))
-    elif args.user_list:
+def cmd_project(args):
+    if args.add:
+        if not args.name or not args.workspace:
+            print("-n and -w are required when creating a new project")
+            return False
+
+        wksp = find_workspace(args.workspace)
+        if wksp is None:
+            print("Could not find specified workspace!")
+            return False
+
+        p = TogglProject()
+        p.name = args.name
+        p.billable = args.billable
+        p.estimated_workhours = args.estimated_workhours
+        p.autocalc_estimated_workhours = args.auto_calc
+        p.workspace = wksp
+
+        toggl.add_project(p)
+    elif args.update:
+        if not args.id:
+            print("-i is required when updating a project")
+            return False
+
+        p = find_project(args.id)
+        if p is None:
+            print("Could not find specified project!")
+            return False
+        if args.name is not None:
+            p.name = args.name
+        if args.billable is not None:
+            p.billable = args.billable
+        if args.estimated_workhours is not None:
+            p.estimated_workhours = args.estimated_workhours
+        if args.auto_calc is not None:
+            p.autocalc_estimated_workhours = args.auto_calc
+        if args.workspace is not None:
+            wksp = find_workspace(args.workspace)
+            if wksp is None:
+                print("Could not find specified workspace!")
+                return False
+            p.workspace = wksp
+
+        toggl.update_project(p)
+    elif args.archive:
+        toggl.archive_projects(args.archive)
+    elif args.reopen:
+        toggl.reopen_projects(args.reopen)
+    else:
+        list_projects(args)
+
+    return True
+
+def cmd_workspace(args):
+    if args.user_list:
         if not args.id:
             print("Workspace ID is required to list users!")
             return False
@@ -488,8 +562,13 @@ def list_workspaces(args):
         for user in user_list:
             print("* %s <%s>" % (user.fullname, user.email))
         print("Total Users: %d" % len(user_list))
+    else:
+        list_workspaces(args)
 
     return True
+
+def cmd_client(args):
+    list_clients(args)
 
 def visit_web(args):
     if not toggl_cfg.has_option('options', 'web_browser_cmd'):
@@ -578,10 +657,24 @@ def main():
     parser_edit.set_defaults(func=edit_time_entry)
 
     parser_now = subparsers.add_parser('now', help='Show the current time entry')
+    parser_now.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
     parser_now.set_defaults(func=list_current_time_entry)
 
-    parser_proj = subparsers.add_parser('proj', help='Show your project list')
-    parser_proj.set_defaults(func=list_projects)
+    parser_proj = subparsers.add_parser('proj', help='Manage projects')
+    parser_proj.add_argument('-l', '--list', help="List projects", action='store_true', default=False)
+    parser_proj.add_argument('-a', '--add', help="Add a new project entry", action='store_true', default=False)
+    parser_proj.add_argument('-u', '--update', help="Update an existing project entry", action='store_true', default=False)
+    parser_proj.add_argument('-A', '--archive', help="Archive a project entry", default=None)
+    parser_proj.add_argument('-O', '--reopen', help="Reopen an archived project entry", default=None)
+    parser_proj.add_argument('-b', '--billable', help="Set the project's billable value", type=bool, default=None)
+    parser_proj.add_argument('-n', '--name', help="Set the project's name", default=None)
+    parser_proj.add_argument('-i', '--id', help="Specify the project id", default=None)
+    parser_proj.add_argument('-c', '--client', help="Set the project's client", default=None)
+    parser_proj.add_argument('-w', '--workspace', help="Set the project's client", default=None)
+    parser_proj.add_argument('-e', '--estimated-workhours', help="Set the project's estimated work hours", type=int, default=None)
+    parser_proj.add_argument('-C', '--auto-calc', help="Automatically calculate estimated work hours", type=bool, default=None)
+    parser_proj.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
+    parser_proj.set_defaults(func=cmd_project)
 
     parser_start = subparsers.add_parser('start', help='Start a new time entry')
     parser_start.add_argument('-m', '--msg', help='Log entry message', required=True)
@@ -604,7 +697,13 @@ def main():
     parser_wspace.add_argument('-i', '--id', help='The workspace id')
     parser_wspace.add_argument('-l', '--list', help='List workspaces', action='store_true', default=False)
     parser_wspace.add_argument('-u', '--user-list', help='List workspace users', action='store_true', default=False)
-    parser_wspace.set_defaults(func=list_workspaces)
+    parser_wspace.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
+    parser_wspace.set_defaults(func=cmd_workspace)
+
+    parser_clients = subparsers.add_parser('client', help='Manage clients')
+    parser_clients.add_argument('-l', '--list', help='List clients', action='store_true', default=False)
+    parser_clients.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
+    parser_clients.set_defaults(func=cmd_client)
 
     global args
     args = parser.parse_args(sys.argv[1:])
