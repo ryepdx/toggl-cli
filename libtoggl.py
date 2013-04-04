@@ -77,7 +77,7 @@ class TogglApi:
         """Adds the given project as a new project."""
 
         url = "%s/projects/%s.json" % (self.base_url, url_quote(str(proj.id)))
-        data = proj.to_json()
+        data = { KEY_PROJECT : proj.to_json() }
 
         if self.verbose:
             print(url)
@@ -95,7 +95,7 @@ class TogglApi:
         """Archive the specified list of projects."""
         url = "%s/projects/archive.json" % (self.base_url)
 
-        data = {'id' : projlist}
+        data = {KEY_ID : projlist}
 
         if self.verbose:
             print(url)
@@ -113,7 +113,7 @@ class TogglApi:
         """Archive the specified list of projects."""
         url = "%s/projects/open.json" % (self.base_url)
 
-        data = {'id' : projlist}
+        data = {KEY_ID : projlist}
 
         if self.verbose:
             print(url)
@@ -220,6 +220,7 @@ class TogglApi:
         return TogglResponse(True, json.loads(r.text))
 
     def get_workspaces(self):
+        """Get the list of workspaces."""
         url = "%s/workspaces.json" % self.base_url
         if self.verbose:
             print(url)
@@ -232,6 +233,7 @@ class TogglApi:
         return [TogglWorkspace(w) for w in json.loads(r.text)['data']]
 
     def get_workspace_users(self, wsp_id):
+        """Get the user list for the specified workspace."""
         url = "%s/workspaces/%s/users.json" % (self.base_url, wsp_id)
         if self.verbose:
             print(url)
@@ -244,6 +246,7 @@ class TogglApi:
         return [TogglUser(u) for u in json.loads(r.text)['data']]
 
     def get_clients(self):
+        """Get list of clients."""
         url = "%s/clients.json" % (self.base_url)
         if self.verbose:
             print(url)
@@ -254,6 +257,58 @@ class TogglApi:
             print(r.text)
 
         return [TogglClient(c) for c in json.loads(r.text)['data']]
+
+    def add_client(self, cl):
+        """Add a new client entry."""
+        url = "%s/clients.json" % (self.base_url)
+        data = { KEY_CLIENT : cl.to_json() }
+
+        if self.verbose:
+            print(url)
+            print(data)
+
+        r = requests.post(url, auth=self.auth,
+            data=json.dumps(data), headers=self.headers)
+        self._raise_if_error(r)
+
+        if self.verbose:
+            print(r.text)
+
+        return TogglResponse(True, json.loads(r.text))
+
+    def update_client(self, cl):
+        """Update an existing client entry."""
+        url = "%s/clients/%d.json" % (self.base_url, cl.id)
+        data = { KEY_CLIENT : cl.to_json() }
+
+        if self.verbose:
+            print(url)
+            print(data)
+
+        r = requests.put(url, auth=self.auth, data=json.dumps(data), headers=self.headers)
+        if r.status_code == 404:
+            return TogglResponse(False)
+        self._raise_if_error(r)
+
+        if self.verbose:
+            print(r.text)
+
+        return TogglResponse(True, json.loads(r.text))
+
+    def delete_client(self, client_id):
+        """Delete the time entry with the specified id"""
+        url = "%s/clients/%d.json" % (self.base_url, int(client_id))
+        if self.verbose:
+            print(url)
+        r = requests.delete(url, auth=self.auth, data=None, headers=self.headers)
+        if r.status_code == 404:
+            return TogglResponse(False)
+        self._raise_if_error(r)
+
+        if self.verbose:
+            print(r.text)
+
+        return TogglResponse(True, json.loads(r.text))
 
 class TogglResponse:
     def __init__(self, success, data=None):
@@ -322,7 +377,14 @@ class TogglUser(TogglObject):
 class TogglClient(TogglObject):
     def __init__(self, fields=None):
         TogglObject.__init__(self, fields)
-        if fields is None:
+
+        if fields is not None:
+            if KEY_WORKSPACE in fields:
+                self._workspace = TogglWorkspace(fields[KEY_WORKSPACE])
+            else:
+                self._workspace = None
+        else:
+            self._workspace = None
             self.hourly_rate = None
             self.currency = None
 
@@ -342,12 +404,21 @@ class TogglClient(TogglObject):
     def currency(self, value):
         self.fields[KEY_CURRENCY] = value
 
+    @property
+    def workspace(self):
+        return self._workspace
+
+    @workspace.setter
+    def workspace(self, value):
+        self.workspace = value
+
     def to_json(self):
         return {
                     KEY_ID : self.id,
                     KEY_NAME : self.name,
                     KEY_HRLYRATE : self.hourly_rate,
                     KEY_CURRENCY : self.currency,
+                    KEY_WORKSPACE : self.workspace.to_json() if self.workspace is not None else None
                }
 
 class TogglProject(TogglObject):

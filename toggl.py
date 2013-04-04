@@ -293,8 +293,8 @@ def list_clients(args):
         if args.verbose_list:
             cl_id  = "[%s] " % (cl.id)
 
-        print("* %s%s [Hourly Rate: (%s) Currency: (%s)]" %
-                (cl_id, cl.name, cl.hourly_rate, cl.currency))
+        print("* %s%s [Workspace: (%s) Hourly Rate: (%s) Currency: (%s)]" %
+                (cl_id, cl.name, cl.workspace.name if cl.workspace is not None else "None", cl.hourly_rate, cl.currency))
 
 def find_client(client):
     cli_list = toggl.get_clients()
@@ -595,7 +595,67 @@ def cmd_workspace(args):
     return True
 
 def cmd_client(args):
-    list_clients(args)
+    if args.add:
+        if not args.name:
+            print("Name is required to add a new client!")
+            return False
+
+        c = TogglClient()
+        c.name = args.name
+        c.hourly_rate = args.rate
+        c.currency = args.currency
+        if args.workspace:
+            wksp = find_workspace(args.workspace)
+            if not wksp:
+                print("Unable to find specified workspace!")
+                return False
+            c.workspace = wksp
+
+        toggl.add_client(c)
+
+        return True
+    elif args.update:
+        c = None
+        if args.id:
+            c = find_client(args.id)
+        elif args.name:
+            c = find_client(args.name)
+        else:
+            print("Either name or id is required to update a client!")
+            return False
+        if not c:
+            print("Unable to find specified client!")
+            return False
+        if args.name is not None:
+            c.name = args.name
+        if args.rate is not None:
+            c.hourly_rate = args.rate
+        if args.currency is not None:
+            c.currency = args.currency
+        if args.workspace is not None:
+            wksp = find_workspace(args.workspace)
+            if not wksp:
+                print("Unable to find specified workspace!")
+                return False
+            c.workspace = wksp
+
+        if not toggl.update_client(c):
+            print("Failed to update specified client!")
+            return False
+
+        return True
+    elif args.delete:
+        if not args.id:
+            print("Must specify the client id to delete!")
+            return False
+
+        if not toggl.delete_client(args.id):
+            print("Failed to update specified client!")
+            return False
+
+        return True
+    else:
+        list_clients(args)
 
 def visit_web(args):
     if not toggl_cfg.has_option('options', 'web_browser_cmd'):
@@ -675,7 +735,7 @@ def main():
     parser_add.set_defaults(func=add_time_entry)
 
     parser_edit = subparsers.add_parser('edit', help='Edit an existing time entry')
-    parser_edit.add_argument('-i', '--id', help='The id to edit', required=True)
+    parser_edit.add_argument('-i', '--id', help='The time entry id to edit', required=True)
     parser_edit.add_argument('-m', '--msg', help='Log entry message')
     parser_edit.add_argument('-p', '--proj', help='Project for the log entry')
     parser_edit.add_argument('-d', '--duration', help='Entry duration')
@@ -731,6 +791,14 @@ def main():
 
     parser_clients = subparsers.add_parser('client', help='Manage clients')
     parser_clients.add_argument('-l', '--list', help='List clients', action='store_true', default=False)
+    parser_clients.add_argument('-a', '--add', help='Add a new client entry', action='store_true', default=False)
+    parser_clients.add_argument('-u', '--update', help='Update an existing client entry', action='store_true', default=False)
+    parser_clients.add_argument('-D', '--delete', help='Add a new client entry', action='store_true', default=False)
+    parser_clients.add_argument('-i', '--id', help='The client id', default=None)
+    parser_clients.add_argument('-n', '--name', help="Set the clients's name", default=None)
+    parser_clients.add_argument('-c', '--currency', help='Set the currency', default=None)
+    parser_clients.add_argument('-r', '--rate', help='Set the hourly rate', default=None)
+    parser_clients.add_argument('-w', '--workspace', help='Set the workspace for this client', default=None)
     parser_clients.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
     parser_clients.set_defaults(func=cmd_client)
 
