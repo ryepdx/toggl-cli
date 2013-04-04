@@ -16,9 +16,6 @@ Copyright (c) 2013 Morgan Howe. All rights reserved.
 ### Configuration Section                                                 ###
 ###
 
-# How do you log into toggl.com?
-AUTH = ('', '')
-
 # Do you want to ignore starting times by default?
 IGNORE_START_TIMES = False
 
@@ -238,8 +235,18 @@ def list_current_time_entry(args):
 
 def list_projects(args):
     """List all projects."""
+    show_archived = False
+    if args.show_archived is not None:
+        show_archived = args.show_archived
+    else:
+        if toggl_cfg.has_option('options', 'show_archived_projects'):
+            show_archived = toggl_cfg.getboolean('options', 'show_archived_projects')
+
     proj_list = toggl.get_projects()
+
     for proj in proj_list:
+        if not proj.is_active and not show_archived:
+            continue
         proj_id = ""
         if args.verbose_list:
             proj_id = "[%s] " % (proj.id)
@@ -588,6 +595,7 @@ def create_default_cfg():
     cfg.set('options', 'datefmt', DEFAULT_DATEFMT)
     cfg.set('options', 'entry_datefmt', DEFAULT_ENTRY_DATEFMT)
     cfg.set('options', 'use_mandays', False)
+    cfg.set('options', 'show_archived_projects', False)
     with open(os.path.expanduser('~/.togglrc'), 'w') as cfgfile:
         cfg.write(cfgfile)
 
@@ -619,8 +627,8 @@ def main():
     if toggl_cfg.has_section('aliases'):
         build_alias_table()
 
-    global AUTH, IGNORE_START_TIMES
-    AUTH = (toggl_cfg.get('auth', 'username').strip(), toggl_cfg.get('auth', 'password').strip())
+    global IGNORE_START_TIMES
+    auth = (toggl_cfg.get('auth', 'username').strip(), toggl_cfg.get('auth', 'password').strip())
     IGNORE_START_TIMES = toggl_cfg.getboolean('options', 'ignore_start_times')
 
     parser = argparse.ArgumentParser(prog='toggl')
@@ -662,10 +670,11 @@ def main():
 
     parser_proj = subparsers.add_parser('proj', help='Manage projects')
     parser_proj.add_argument('-l', '--list', help="List projects", action='store_true', default=False)
+    parser_proj.add_argument('-A', '--show-archived', help="Override the show-archived setting", action='store_true', default=None)
     parser_proj.add_argument('-a', '--add', help="Add a new project entry", action='store_true', default=False)
     parser_proj.add_argument('-u', '--update', help="Update an existing project entry", action='store_true', default=False)
-    parser_proj.add_argument('-A', '--archive', help="Archive a project entry", default=None)
-    parser_proj.add_argument('-O', '--reopen', help="Reopen an archived project entry", default=None)
+    parser_proj.add_argument('-r', '--archive', help="Archive a project entry", default=None)
+    parser_proj.add_argument('-o', '--reopen', help="Reopen an archived project entry", default=None)
     parser_proj.add_argument('-b', '--billable', help="Set the project's billable value", type=bool, default=None)
     parser_proj.add_argument('-n', '--name', help="Set the project's name", default=None)
     parser_proj.add_argument('-i', '--id', help="Specify the project id", default=None)
@@ -708,7 +717,7 @@ def main():
     global args
     args = parser.parse_args(sys.argv[1:])
     global toggl
-    toggl = TogglApi(TOGGL_URL, AUTH, args.verbose)
+    toggl = TogglApi(TOGGL_URL, auth, args.verbose)
 
     if args.func(args):
         return 0
