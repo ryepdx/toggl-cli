@@ -52,6 +52,94 @@ alias_dict = {}
 def json_format(text):
     return json.dumps(text, sort_keys=False, indent=4, separators=(',', ':'))
 
+def format_time_entry(entry, show_proj=True, verbose=False):
+    """Utility function to print a time entry object and returns the
+       integer duration for this entry."""
+
+    # If the duration is negative, the entry is currently running so we
+    # have to calculate the duration by adding the current time.
+    is_running = ''
+
+    e_time_str = " %s" % elapsed_time(int(get_entry_duration(entry)), separator='')
+ 
+    # Get the project name (if one exists).
+    tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
+    project_name = ''
+    if entry.project == None:
+        project_name = " (No Project)"
+    elif show_proj:
+        project_name = " @%s" % entry.project.name
+    else:
+        start_time = date_parser.parse(entry.start_time).astimezone(tz)
+        project_name = " %s" % start_time.date()
+
+    if verbose:
+        date_fmt = DEFAULT_ENTRY_DATEFMT
+        if toggl_cfg.has_option('options', 'entry_datefmt'):
+            date_fmt = toggl_cfg.get('options', 'entry_datefmt')
+
+        st = date_parser.parse(entry.start_time).astimezone(tz).strftime(date_fmt)
+        if entry.stop_time == None:
+            et = ""
+        else:
+            et = date_parser.parse(entry.stop_time).astimezone(tz).strftime(date_fmt)
+
+        return "[%s] %s%s%s%s (%s - %s)" % (entry.id, is_running, entry.desc, \
+                project_name, e_time_str, st, et)
+    else:
+        return "%s%s%s%s" % (is_running, entry.desc, project_name, e_time_str)
+
+def format_project_entry(proj, verbose=False):
+    proj_id = ""
+    if args.verbose_list:
+        proj_id = "[%s] " % (proj.id)
+
+    alias = find_alias_key_by_val(proj.name)
+    alias_str = ""
+    if alias is not None:
+        alias_str = "(%s)" % alias
+
+    return "%s %s%-10s %s [Workspace: (%s)]" % ('*' if proj.is_active else '-',
+        proj_id, alias_str, proj.name, proj.workspace.name if proj.workspace else 'None')
+
+def show_project(proj):
+    print("%-30s: %d" % ("Project ID", proj.id))
+    print("%-30s: %s" % ("Name", proj.name))
+    print("%-30s: %s" % ("Workspace", proj.workspace.name if proj.workspace else "None"))
+    print("%-30s: %s" % ("Client", proj.client.name if proj.client else "None"))
+    print("%-30s: %s" % ("Billable", proj.billable))
+    print("%-30s: %s" % ("Est. Work Hours", proj.estimated_workhours))
+    print("%-30s: %s" % ("Auto-calc Est. Work Hours", proj.autocalc_estimated_workhours))
+    print("%-30s: %s" % ("Active", proj.is_active))
+
+def format_client_entry(cl, verbose=False):
+    cl_id = ""
+    if args.verbose_list:
+        cl_id  = "[%s] " % (cl.id)
+
+    return "* %s%s [Workspace: (%s) Hourly Rate: (%s) Currency: (%s)]" % (cl_id,
+            cl.name, cl.workspace.name if cl.workspace is not None else "None", cl.hourly_rate, cl.currency)
+
+def show_client(cl):
+    print("%-30s: %d" % ("Client ID", cl.id))
+    print("%-30s: %s" % ("Name", cl.name))
+    print("%-30s: %s" % ("Workspace", cl.workspace.name if cl.workspace else "None"))
+    print("%-30s: %s" % ("Currency", cl.currency))
+    print("%-30s: %s" % ("Hourly Rate", cl.hourly_rate))
+
+def format_workspace_entry(wsp, verbose=False):
+    wsp_id = ""
+    if args.verbose_list:
+        wsp_id = "[%s] " % (wsp.id)
+
+    return "* %s%s" % (wsp_id, wsp.name)
+
+def show_workspace(wsp):
+    print("%-30s: %d" % ("Workspace ID", wsp.id))
+    print("%-30s: %s" % ("Name", wsp.name))
+    print("%-30s: %s" % ("Profile Name", wsp.profile_name))
+    print("%-30s: %s" % ("Admin", wsp.is_admin))
+
 def add_time_entry(args):
     """
     Creates a completed time entry.
@@ -243,20 +331,22 @@ def list_projects(args):
             show_archived = toggl_cfg.getboolean('options', 'show_archived_projects')
 
     proj_list = toggl.get_projects()
+    
+    wsp = None
+    if args.workspace:
+        wsp = find_workspace(args.workspace)
+        if wsp is None:
+            print("Could not find specified workspace!")
+            return False
 
     for proj in proj_list:
         if not proj.is_active and not show_archived:
             continue
-        proj_id = ""
-        if args.verbose_list:
-            proj_id = "[%s] " % (proj.id)
+        elif wsp is not None and proj.workspace is not None:
+            if wsp.id != proj.workspace.id:
+                continue
+        print(format_project_entry(proj, args.verbose_list))
 
-        alias = find_alias_key_by_val(proj.name)
-        alias_str = ""
-        if alias is not None:
-            alias_str = "(%s)" % alias
-
-        print("%s %s%-10s %s" % ('*' if proj.is_active else '-', proj_id, alias_str, proj.name))
     return True
 
 def find_project(proj):
@@ -272,12 +362,8 @@ def find_project(proj):
 def list_workspaces(args):
     wsp_list = toggl.get_workspaces()
     for wsp in wsp_list:
-        wsp_id = ""
-        if args.verbose_list:
-            wsp_id = "[%s] " % (wsp.id)
-
-        print("* %s%s [Profile: (%s) Admin: (%s)]" %
-                (wsp_id, wsp.name, wsp.profile_name, "yes" if wsp.is_admin else "no"))
+        print(format_workspace_entry(wsp, args.verbose_list))
+    return True
 
 def find_workspace(wkspc):
     wsp_list = toggl.get_workspaces()
@@ -289,12 +375,7 @@ def find_workspace(wkspc):
 def list_clients(args):
     cl_list = toggl.get_clients()
     for cl in cl_list:
-        cl_id = ""
-        if args.verbose_list:
-            cl_id  = "[%s] " % (cl.id)
-
-        print("* %s%s [Workspace: (%s) Hourly Rate: (%s) Currency: (%s)]" %
-                (cl_id, cl.name, cl.workspace.name if cl.workspace is not None else "None", cl.hourly_rate, cl.currency))
+        print(format_client_entry(cl, args.verbose_list))
 
 def find_client(client):
     cli_list = toggl.get_clients()
@@ -406,43 +487,6 @@ def get_entry_duration(entry):
         is_running = '* '
         e_time = (datetime.datetime.now(pytz.utc) - date_parser.parse(entry.start_time).astimezone(pytz.utc)).seconds
     return e_time
-
-def format_time_entry(entry, show_proj=True, verbose=False):
-    """Utility function to print a time entry object and returns the
-       integer duration for this entry."""
-
-    # If the duration is negative, the entry is currently running so we
-    # have to calculate the duration by adding the current time.
-    is_running = ''
-
-    e_time_str = " %s" % elapsed_time(int(get_entry_duration(entry)), separator='')
- 
-    # Get the project name (if one exists).
-    tz = pytz.timezone(toggl_cfg.get('options', 'timezone'))
-    project_name = ''
-    if entry.project == None:
-        project_name = " (No Project)"
-    elif show_proj:
-        project_name = " @%s" % entry.project.name
-    else:
-        start_time = date_parser.parse(entry.start_time).astimezone(tz)
-        project_name = " %s" % start_time.date()
-
-    if verbose:
-        date_fmt = DEFAULT_ENTRY_DATEFMT
-        if toggl_cfg.has_option('options', 'entry_datefmt'):
-            date_fmt = toggl_cfg.get('options', 'entry_datefmt')
-
-        st = date_parser.parse(entry.start_time).astimezone(tz).strftime(date_fmt)
-        if entry.stop_time == None:
-            et = ""
-        else:
-            et = date_parser.parse(entry.stop_time).astimezone(tz).strftime(date_fmt)
-
-        return "[%s] %s%s%s%s (%s - %s)" % (entry.id, is_running, entry.desc, \
-                project_name, e_time_str, st, et)
-    else:
-        return "%s%s%s%s" % (is_running, entry.desc, project_name, e_time_str)
 
 def delete_time_entry(args):
     entry_id = args.id
@@ -575,6 +619,13 @@ def cmd_project(args):
         toggl.archive_projects(args.archive)
     elif args.reopen:
         toggl.reopen_projects(args.reopen)
+    elif args.id:
+        proj = find_project(args.id)
+        if proj is None:
+            print("Could not find specified project!")
+            return False
+        else:
+            show_project(proj)
     else:
         list_projects(args)
 
@@ -589,6 +640,13 @@ def cmd_workspace(args):
         for user in user_list:
             print("* %s <%s>" % (user.fullname, user.email))
         print("Total Users: %d" % len(user_list))
+    elif args.id:
+        wsp = find_workspace(args.id)
+        if wsp is None:
+            print("Could not find specified workspace!")
+            return False
+        else:
+            show_workspace(wsp)
     else:
         list_workspaces(args)
 
@@ -654,6 +712,13 @@ def cmd_client(args):
             return False
 
         return True
+    elif args.id:
+        cl = find_client(args.id)
+        if cl is None:
+            print("Could not find specified client!")
+            return False
+        else:
+            show_client(cl)
     else:
         list_clients(args)
 
