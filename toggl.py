@@ -101,6 +101,20 @@ class TogglCache:
     def update_client_cache(self, data):
         return self.write_cache_file("%s/%s" % (self._cache_path, "clients.cache"), data)
 
+def check_feature_support(proj):
+    wsp = find_workspace(str(proj.workspace.id)) if proj.workspace else None
+    if not wsp:
+        print("Could not find workspace!")
+        return False
+
+    if wsp.profile_name == "Free":
+        return False
+    elif wsp.profile_name == "Pro":
+        return True
+    else:
+        print("Unexpected profile name: %s" % wsp.profile_name)
+        return False
+
 def json_format(text):
     return json.dumps(text, sort_keys=False, indent=4, separators=(',', ':'))
 
@@ -191,6 +205,28 @@ def show_workspace(wsp):
     print("%-30s: %s" % ("Name", wsp.name))
     print("%-30s: %s" % ("Profile Name", wsp.profile_name))
     print("%-30s: %s" % ("Admin", wsp.is_admin))
+
+def format_task_entry(task, verbose=False):
+    task_id = ""
+    if args.verbose_list:
+        task_id = "[%s] " % (task.id)
+
+    return "* %s%s" % (task.id, task.name)
+
+def show_task(task):
+    print("%-30s: %d" % ("Task ID", task.id))
+    print("%-30s: %s" % ("Name", task.name))
+    print("%-30s: %s" % ("Workspace", task.workspace.name if task.workspace else "None"))
+    print("%-30s: %s" % ("Project", task.project.name if task.project else "None"))
+    print("%-30s: %s" % ("User", task.user.name if task.user else "None"))
+    print("%-30s: %s" % ("Estimated Seconds", task.estimated_seconds))
+    print("%-30s: %s" % ("Active", task.is_active))
+
+def format_user_entry(user, verbose=False):
+    user_id = ""
+    if args.verbose_list:
+        user_id = "[%s] " % (user.id)
+    return "* %s%s <%s>" % (user_id, user.fullname, user.email)
 
 def add_time_entry(args):
     """
@@ -285,6 +321,20 @@ def parse_time_str(timestr):
         tmp = tz.localize(tmp)
     return tmp.astimezone(pytz.utc).isoformat()
 
+def parse_estimate(est):
+    if est is None:
+        return 0
+    mult = 1
+    if est.endswith('s'):
+        est = est[:-1]
+    elif est.endswith('m'):
+        mult = 60
+        est = est[:-1]
+    elif est.endswith('h'):
+        mult = 60 * 60
+        est = est[:-1]
+
+    return int(est) * mult
 
 def elapsed_time(seconds, suffixes=['y','w','d','h','m','s'], add_s=False, separator=' '):
     """
@@ -478,6 +528,19 @@ def find_client(client):
     for cli in cli_list:
         if str(cli.id) == client or cli.name.startswith(client):
             return cli
+    return None
+
+def list_tasks(args):
+    active = False if args.list_inactive else True
+    task_list = toggl.get_tasks(active=active)
+    for task in task_list:
+        print(format_task_entry(task, args.verbose_list))
+
+def find_task(task):
+    task_list = toggl.get_tasks(active=False)
+    for task in task_list:
+        if str(task.id) == task or task.name.startswith(task):
+            return task
     return None
 
 def list_time_entries_date(entries):
@@ -734,7 +797,7 @@ def cmd_workspace(args):
             return False
         user_list = toggl.get_workspace_users(args.id)
         for user in user_list:
-            print("* %s <%s>" % (user.fullname, user.email))
+            print(format_user_entry(user))
         print("Total Users: %d" % len(user_list))
     elif args.id:
         wsp = find_workspace(args.id)
@@ -770,13 +833,10 @@ def cmd_client(args):
         return True
     elif args.update:
         c = None
-        if args.id:
-            c = find_client(args.id)
-        elif args.name:
-            c = find_client(args.name)
-        else:
-            print("Either name or id is required to update a client!")
+        if not args.id:
+            print("You must specify the id of the client to update!")
             return False
+        c = find_client(args.id)
         if not c:
             print("Unable to find specified client!")
             return False
@@ -815,8 +875,82 @@ def cmd_client(args):
             return False
         else:
             show_client(cl)
+        return True
     else:
         list_clients(args)
+
+def cmd_task(args):
+    if args.add:
+        if not args.name:
+            print("Name is required for new task entries!")
+            return False
+        elif not args.proj:
+            print("Project is required for new task entries!")
+            return False
+
+        proj = find_project(args.proj)
+        if not proj:
+            print("Unable to find specified project!")
+            return False
+
+        if not check_feature_support(proj):
+            print("Your account does not support this feature.")
+            return False
+
+        t = TogglTask()
+
+        t.name = args.name
+        t.is_active = args.active if args.active is not None else True
+        t.estimated_seconds = parse_estimate(args.estimate)
+
+        t.project = proj
+
+        toggl.add_task(t)
+
+        return True
+    elif args.update:
+        if not args.id:
+            print("You must specify the id of a task to update!")
+            return False
+        t = find_task(args.id)
+        if not t:
+            print("Unable to find specified task!")
+            return False
+
+        if args.name:
+            t.name = args.name
+        if args.active is not None:
+            t.is_active = args.active
+        if args.estimate is not None:
+            t.estimated_seconds = parse_estimate(args.estimate)
+        if args.proj is not None:
+            proj = find_project(args.proj)
+            if not proj:
+                print("Unable to find specified project!")
+                return False
+            t.project = proj
+
+        toggl.update_task(t)
+
+        return True
+    elif args.delete:
+        if not args.id:
+            print("You must specify the id of a task to delete!")
+            return False
+
+        toggl.delete_task(args.id)
+
+        return True
+    elif args.id:
+        task = find_task(args.id)
+        if task is None:
+            print("Could not find specified task!")
+            return False
+        else:
+            show_task(task)
+        return True
+    else:
+        list_tasks(args)
 
 def cmd_update(args):
     if not toggl_cfg.has_option('options', 'cache_enabled') or \
@@ -928,7 +1062,7 @@ def main():
 
     parser_add = subparsers.add_parser('add', help='Add a new time entry')
     parser_add.add_argument('-m', '--msg', help='Log entry message', required=True)
-    parser_add.add_argument('-p', '--proj', help='Project for the log entry')
+    parser_add.add_argument('-p', '--proj', help='Project for the log entry', default=None)
     parser_add.add_argument('-s', '--start', help='Specify start date', default=None)
     parser_add.add_argument('-e', '--end', help='Specify end date', default=None)
     parser_add.add_argument('-d', '--duration', help='Entry duration', required=False)
@@ -1004,6 +1138,21 @@ def main():
     parser_clients.add_argument('-U', '--update-cache', help="Update the workspace cache", action='store_true', default=False)
     parser_clients.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
     parser_clients.set_defaults(func=cmd_client)
+
+    parser_tasks = subparsers.add_parser('task', help='Manage tasks')
+    parser_tasks.add_argument('-l', '--list', help='List tasks', action='store_true', default=False)
+    parser_tasks.add_argument('-I', '--list-inactive', help='Include inactive tasks in list', action='store_true', default=False)
+    parser_tasks.add_argument('-a', '--add', help='Add a new task entry', action='store_true', default=False)
+    parser_tasks.add_argument('-u', '--update', help='Update an existing task entry', action='store_true', default=False)
+    parser_tasks.add_argument('-D', '--delete', help='Add a new task entry', action='store_true', default=False)
+    parser_tasks.add_argument('-i', '--id', help='The task id', default=None)
+    parser_tasks.add_argument('-n', '--name', help='Set the task name', default=None)
+    parser_tasks.add_argument('-p', '--proj', help='Project for the task entry', default=None)
+    parser_tasks.add_argument('-U', '--user', help="Set the task's user ", default=None)
+    parser_tasks.add_argument('-e', '--estimate', help="Set the task estimate [int, suffix with s, m, or h]", default=None)
+    parser_tasks.add_argument('-A', '--active', help='Set the task active status', choices=[True, False], default=None)
+    parser_tasks.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
+    parser_tasks.set_defaults(func=cmd_task)
 
     parser_update = subparsers.add_parser('update', help='Update caches')
     parser_update.set_defaults(func=cmd_update)

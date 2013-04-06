@@ -30,6 +30,8 @@ KEY_ISACTIVE    = 'is_active'
 KEY_TIMEENTRY   = 'time_entry'
 KEY_CREATEDW    = 'created_with'
 KEY_IGNTIMES    = 'ignore_start_and_stop'
+KEY_ESTSECS     = 'estimated_seconds'
+KEY_TASK        = 'task'
 
 class TogglRawData:
     def __init__(self):
@@ -372,6 +374,55 @@ class TogglApi:
 
         return TogglResponse(True, json.loads(r.text))
 
+    def get_tasks(self, active=True):
+        """Get the list of tasks"""
+        url = "%s/tasks.json?active=%s" % (self.base_url, active)
+        if self.verbose:
+            print(url)
+        r = requests.get(url, auth=self.auth)
+        self._raise_if_error(r)
+
+        from_text = r.text
+
+        if self.verbose:
+            print(from_text)
+
+        return [TogglTask(t) for t in json.loads(from_text)['data']]
+
+    def add_task(self, task):
+        """Add a new client entry."""
+        url = "%s/tasks.json" % (self.base_url)
+        data = { KEY_TASK: task.to_json() }
+
+        if self.verbose:
+            print(url)
+            print(data)
+
+        r = requests.post(url, auth=self.auth,
+            data=json.dumps(data), headers=self.headers)
+        self._raise_if_error(r)
+
+        if self.verbose:
+            print(r.text)
+
+        return TogglResponse(True, json.loads(r.text))
+
+    def delete_task(self, task_id):
+        """Delete a task entry."""
+        url = "%s/tasks/%d.json" % (self.base_url, int(task_id))
+
+        if self.verbose:
+            print(url)
+        r = requests.delete(url, auth=self.auth, data=None, headers=self.headers)
+        if r.status_code == 404:
+            return TogglResponse(False)
+        self._raise_if_error(r)
+
+        if self.verbose:
+            print(r.text)
+
+        return TogglResponse(True, json.loads(r.text))
+
 class TogglResponse:
     def __init__(self, success, data=None):
         self._success = success
@@ -391,7 +442,7 @@ class TogglObject(object):
             self.fields = fields
         else:
             self.fields = {}
-            self.id = None
+            self.fields[KEY_ID] = None
             self.name = None
 
     @property
@@ -405,6 +456,72 @@ class TogglObject(object):
     @name.setter
     def name(self, value):
         self.fields[KEY_NAME] = value
+
+class TogglTask(TogglObject):
+    def __init__(self, fields=None):
+        TogglObject.__init__(self, fields)
+        if fields is not None:
+            if KEY_WORKSPACE in fields:
+                self._workspace = TogglWorkspace(fields[KEY_WORKSPACE])
+            else:
+                self._workspace = None
+
+    @property
+    def workspace(self):
+        return self._workspace
+
+    @workspace.setter
+    def workspace(self, value):
+        self._workspace = value
+        if self._workspace:
+            self.fields[KEY_WORKSPACE] = self._workspace.to_json()
+
+    @property
+    def project(self):
+        return self._project
+
+    @project.setter
+    def project(self, value):
+        self._project = value
+        if self._project:
+            self.fields[KEY_PROJECT] = self._project.to_json()
+
+    @property
+    def user(self):
+        return self._user
+
+    @user.setter
+    def user(self, value):
+        self._user = value
+        if self._user:
+            self.fields[KEY_USER] = self._user.to_json()
+
+    @property
+    def estimated_workhours(self):
+        return self.fields[KEY_ESTWKHRS]
+
+    @estimated_workhours.setter
+    def estimated_workhours(self, value):
+        self.fields[KEY_ESTWKHRS] = value
+
+    @property
+    def estimated_seconds(self):
+        return self.fields[KEY_ESTSECS]
+
+    @estimated_seconds.setter
+    def estimated_seconds(self, value):
+        self.fields[KEY_ESTSECS] = value
+
+    @property
+    def is_active(self):
+        return self.fields[KEY_ISACTIVE]
+
+    @is_active.setter
+    def is_active(self, value):
+        self.fields[KEY_ISACTIVE] = value
+
+    def to_json(self):
+        return self.fields
 
 class TogglWorkspace(TogglObject):
     def __init__(self, fields=None):
@@ -432,6 +549,9 @@ class TogglUser(TogglObject):
     @property
     def email(self):
         return self.fields[KEY_EMAIL]
+
+    def to_json(self):
+        return self.fields
 
 class TogglClient(TogglObject):
     def __init__(self, fields=None):
