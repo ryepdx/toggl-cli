@@ -47,7 +47,59 @@ except:
 TOGGL_URL = "https://www.toggl.com/api/v6"
 DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
 DEFAULT_ENTRY_DATEFMT = '%Y-%m-%d %H:%M%p'
+DEFAULT_CACHE_PATH = '~/.toggl'
 alias_dict = {}
+
+class TogglCache:
+    def __init__(self, cache_path, cache_enabled):
+        self._cache_path = os.path.expanduser(cache_path)
+        self._enabled = cache_enabled
+
+        if not os.path.exists(self._cache_path):
+            os.makedirs(self._cache_path)
+
+    @property
+    def enabled(self):
+        return self._enabled
+
+    def read_cache_file(self, path):
+        try:
+            f = open(path, "r")
+            data = f.read()
+            f.close()
+            if data == "":
+                data = None 
+        except IOError:
+            data = None
+
+        return data
+
+    def write_cache_file(self, path, data):
+        try:
+            f = open(path, "w")
+            f.write(data)
+            f.close()
+        except IOError:
+            print("Failed to update %s" % path)
+            pass
+
+    def read_project_cache(self):
+        return self.read_cache_file("%s/%s" % (self._cache_path, "projects.cache"))
+
+    def update_project_cache(self, data):
+        return self.write_cache_file("%s/%s" % (self._cache_path, "projects.cache"), data)
+
+    def read_workspace_cache(self):
+        return self.read_cache_file("%s/%s" % (self._cache_path, "workspaces.cache"))
+
+    def update_workspace_cache(self, data):
+        return self.write_cache_file("%s/%s" % (self._cache_path, "workspaces.cache"), data)
+
+    def read_client_cache(self):
+        return self.read_cache_file("%s/%s" % (self._cache_path, "clients.cache"))
+
+    def update_client_cache(self, data):
+        return self.write_cache_file("%s/%s" % (self._cache_path, "clients.cache"), data)
 
 def json_format(text):
     return json.dumps(text, sort_keys=False, indent=4, separators=(',', ':'))
@@ -330,8 +382,17 @@ def list_projects(args):
         if toggl_cfg.has_option('options', 'show_archived_projects'):
             show_archived = toggl_cfg.getboolean('options', 'show_archived_projects')
 
-    proj_list = toggl.get_projects()
-    
+    raw = None
+    if toggl_cache.enabled:
+        raw = TogglRawData()
+        if not args.update_cache:
+            raw.response_data = toggl_cache.read_project_cache()
+
+    proj_list = toggl.get_projects(raw_data=raw)
+
+    if args.update_cache:
+        toggl_cache.update_project_cache(raw.response_data)
+
     wsp = None
     if args.workspace:
         wsp = find_workspace(args.workspace)
@@ -351,7 +412,12 @@ def list_projects(args):
 
 def find_project(proj):
     """Find a project given the unique prefix of the name"""
-    proj_list = toggl.get_projects()
+    raw = None
+    if toggl_cache.enabled:
+        raw = TogglRawData()
+        raw.response_data = toggl_cache.read_project_cache()
+
+    proj_list = toggl.get_projects(raw_data=raw)
     if proj.startswith('@') and proj in alias_dict:
         proj = alias_dict[proj]
     for project in proj_list:
@@ -360,25 +426,55 @@ def find_project(proj):
     return None
 
 def list_workspaces(args):
-    wsp_list = toggl.get_workspaces()
+    raw = None
+    if toggl_cache.enabled:
+        raw = TogglRawData()
+        if not args.update_cache:
+            raw.response_data = toggl_cache.read_workspace_cache()
+
+    wsp_list = toggl.get_workspaces(raw_data=raw)
+
+    if args.update_cache:
+        toggl_cache.update_workspace_cache(raw.response_data)
+
     for wsp in wsp_list:
         print(format_workspace_entry(wsp, args.verbose_list))
     return True
 
 def find_workspace(wkspc):
-    wsp_list = toggl.get_workspaces()
+    raw = None
+    if toggl_cache.enabled:
+        raw = TogglRawData()
+        raw.response_data = toggl_cache.read_workspace_cache()
+
+    wsp_list = toggl.get_workspaces(raw_data=raw)
     for wsp in wsp_list:
         if str(wsp.id) == wkspc or wsp.name.startswith(wkspc):
             return wsp
     return None
 
 def list_clients(args):
-    cl_list = toggl.get_clients()
+    raw = None
+    if toggl_cache.enabled:
+        raw = TogglRawData()
+        if not args.update_cache:
+            raw.response_data = toggl_cache.read_client_cache()
+
+    cl_list = toggl.get_clients(raw_data=raw)
+
+    if args.update_cache:
+        toggl_cache.update_client_cache(raw.response_data)
+
     for cl in cl_list:
         print(format_client_entry(cl, args.verbose_list))
 
 def find_client(client):
-    cli_list = toggl.get_clients()
+    raw = None
+    if toggl_cache.enabled:
+        raw = TogglRawData()
+        raw.response_data = toggl_cache.read_client_cache()
+
+    cli_list = toggl.get_clients(raw_data=raw)
     for cli in cli_list:
         if str(cli.id) == client or cli.name.startswith(client):
             return cli
@@ -722,6 +818,27 @@ def cmd_client(args):
     else:
         list_clients(args)
 
+def cmd_update(args):
+    if not toggl_cfg.has_option('options', 'cache_enabled') or \
+            not toggl_cfg.getboolean('options', 'cache_enabled'):
+        print("Caching is not enabled. Set options.cache_enabled in ~/.togglrc to enable it.")
+        return False
+
+    raw = TogglRawData()
+    toggl.get_projects(raw_data=raw)
+    toggl_cache.update_project_cache(raw.response_data)
+
+    raw = TogglRawData()
+    toggl.get_workspaces(raw_data=raw)
+    toggl_cache.update_workspace_cache(raw.response_data)
+
+    raw = TogglRawData()
+    toggl.get_clients(raw_data=raw)
+    toggl_cache.update_client_cache(raw.response_data)
+
+    print("Caches updated!")
+    return True
+
 def visit_web(args):
     if not toggl_cfg.has_option('options', 'web_browser_cmd'):
         print("Please set the web_browser_cmd setting in the options section of your ~/.togglrc")
@@ -754,9 +871,7 @@ def build_alias_table():
     for pair in toggl_cfg.items('aliases'):
         alias_dict[pair[0]] = pair[1]
 
-def main():
-    """Program entry point."""
-    
+def init_config():
     global toggl_cfg
     try:
         toggl_cfg = configparser.ConfigParser(interpolation=None)
@@ -771,6 +886,26 @@ def main():
 
     if toggl_cfg.has_section('aliases'):
         build_alias_table()
+
+    return True
+
+def init_cache():
+    global toggl_cache
+    cache_enabled = False
+    if toggl_cfg.has_option('options', 'cache_enabled'):
+        cache_enabled = toggl_cfg.getboolean('options', 'cache_enabled')
+    cache_path = DEFAULT_CACHE_PATH
+    if toggl_cfg.has_option('options', 'cache_path'):
+        cache_path = toggl_cfg.get('options', 'cache_path')
+    toggl_cache = TogglCache(cache_path, cache_enabled)
+
+    return True
+
+def main():
+    """Program entry point."""
+    
+    if not init_config() or not init_cache():
+        return 1
 
     global IGNORE_START_TIMES
     auth = (toggl_cfg.get('auth', 'username').strip(), toggl_cfg.get('auth', 'password').strip())
@@ -827,6 +962,7 @@ def main():
     parser_proj.add_argument('-w', '--workspace', help="Set the project's workspace", default=None, metavar='NAME/ID')
     parser_proj.add_argument('-e', '--estimated-workhours', help="Set the project's estimated work hours", type=int, default=None)
     parser_proj.add_argument('-C', '--auto-calc', help="Automatically calculate estimated work hours", type=bool, default=None)
+    parser_proj.add_argument('-U', '--update-cache', help="Update the project cache", action='store_true', default=False)
     parser_proj.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
     parser_proj.set_defaults(func=cmd_project)
 
@@ -851,6 +987,7 @@ def main():
     parser_wspace.add_argument('-i', '--id', help='The workspace id')
     parser_wspace.add_argument('-l', '--list', help='List workspaces', action='store_true', default=False)
     parser_wspace.add_argument('-u', '--user-list', help='List workspace users', action='store_true', default=False)
+    parser_wspace.add_argument('-U', '--update-cache', help="Update the workspace cache", action='store_true', default=False)
     parser_wspace.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
     parser_wspace.set_defaults(func=cmd_workspace)
 
@@ -864,8 +1001,12 @@ def main():
     parser_clients.add_argument('-c', '--currency', help='Set the currency', default=None)
     parser_clients.add_argument('-r', '--rate', help='Set the hourly rate', default=None)
     parser_clients.add_argument('-w', '--workspace', help='Set the workspace for this client', default=None)
+    parser_clients.add_argument('-U', '--update-cache', help="Update the workspace cache", action='store_true', default=False)
     parser_clients.add_argument('-v', '--verbose-list', help='Show verbose output', action='store_true', default=False)
     parser_clients.set_defaults(func=cmd_client)
+
+    parser_update = subparsers.add_parser('update', help='Update caches')
+    parser_update.set_defaults(func=cmd_update)
 
     global args
     args = parser.parse_args(sys.argv[1:])

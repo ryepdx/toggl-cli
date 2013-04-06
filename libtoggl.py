@@ -29,6 +29,36 @@ KEY_TIMEENTRY   = 'time_entry'
 KEY_CREATEDW    = 'created_with'
 KEY_IGNTIMES    = 'ignore_start_and_stop'
 
+class TogglRawData:
+    def __init__(self):
+        self._url = None
+        self._reqdata = None
+        self._respdata = None
+
+    @property
+    def request_url(self):
+        return self._url
+
+    @request_url.setter
+    def request_url(self, value):
+        self._url = value
+
+    @property
+    def request_data(self):
+        return self._reqdata
+
+    @request_data.setter
+    def request_data(self, value):
+        self._reqdata = value
+
+    @property
+    def response_data(self):
+        return self._respdata
+
+    @response_data.setter
+    def response_data(self, value):
+        self._respdata = value
+
 class TogglApi:
     def __init__(self, url, auth, verbose=False):
         self.base_url = url
@@ -41,19 +71,30 @@ class TogglApi:
             print("Error reason: " + r.text)
         r.raise_for_status()
 
-    def get_projects(self):
+    def get_projects(self, raw_data=None):
         """Fetches the projects as JSON objects."""
         
-        url = "%s/projects.json" % self.base_url
-        if self.verbose:
-            print(url)
-        r = requests.get(url, auth=self.auth)
-        self._raise_if_error(r)
+        if raw_data is None or raw_data.response_data is None:
+            url = "%s/projects.json" % self.base_url
+            if self.verbose:
+                print(url)
+            r = requests.get(url, auth=self.auth)
+            self._raise_if_error(r)
 
-        if self.verbose:
-            print(r.text)
+            if self.verbose:
+                print(r.text)
+            from_text = r.text
 
-        return [TogglProject(p) for p in json.loads(r.text)['data']]
+            if raw_data is not None:
+                raw_data.request_url = url
+                raw_data.response_data = from_text
+        else:
+            from_text = raw_data.response_data
+
+        if (self.verbose):
+            print(from_text)
+
+        return [TogglProject(p) for p in json.loads(from_text)['data']]
 
     def add_project(self, proj):
         """Adds the given project as a new project."""
@@ -219,18 +260,28 @@ class TogglApi:
 
         return TogglResponse(True, json.loads(r.text))
 
-    def get_workspaces(self):
+    def get_workspaces(self, raw_data=None):
         """Get the list of workspaces."""
-        url = "%s/workspaces.json" % self.base_url
-        if self.verbose:
-            print(url)
-        r = requests.get(url, auth=self.auth)
-        self._raise_if_error(r)
-        
-        if self.verbose:
-            print(r.text)
 
-        return [TogglWorkspace(w) for w in json.loads(r.text)['data']]
+        if raw_data is None or raw_data.response_data is None:
+            url = "%s/workspaces.json" % self.base_url
+            if self.verbose:
+                print(url)
+            r = requests.get(url, auth=self.auth)
+            self._raise_if_error(r)
+            
+            from_text = r.text
+
+            if raw_data is not None:
+                raw_data.request_url = url
+                raw_data.response_data = from_text
+        else:
+            from_text = raw_data.response_data
+
+        if self.verbose:
+            print(from_text)
+
+        return [TogglWorkspace(w) for w in json.loads(from_text)['data']]
 
     def get_workspace_users(self, wsp_id):
         """Get the user list for the specified workspace."""
@@ -245,18 +296,27 @@ class TogglApi:
 
         return [TogglUser(u) for u in json.loads(r.text)['data']]
 
-    def get_clients(self):
+    def get_clients(self, raw_data=None):
         """Get list of clients."""
-        url = "%s/clients.json" % (self.base_url)
-        if self.verbose:
-            print(url)
-        r = requests.get(url, auth=self.auth)
-        self._raise_if_error(r)
+        if raw_data is None or raw_data.response_data is None:
+            url = "%s/clients.json" % (self.base_url)
+            if self.verbose:
+                print(url)
+            r = requests.get(url, auth=self.auth)
+            self._raise_if_error(r)
+
+            from_text = r.text
+
+            if raw_data is not None:
+                raw_data.request_url = url
+                raw_data.response_data = from_text
+        else:
+            from_text = raw_data.response_data
 
         if self.verbose:
-            print(r.text)
+            print(from_text)
 
-        return [TogglClient(c) for c in json.loads(r.text)['data']]
+        return [TogglClient(c) for c in json.loads(from_text)['data']]
 
     def add_client(self, cl):
         """Add a new client entry."""
@@ -413,13 +473,7 @@ class TogglClient(TogglObject):
         self.workspace = value
 
     def to_json(self):
-        return {
-                    KEY_ID : self.id,
-                    KEY_NAME : self.name,
-                    KEY_HRLYRATE : self.hourly_rate,
-                    KEY_CURRENCY : self.currency,
-                    KEY_WORKSPACE : self.workspace.to_json() if self.workspace is not None else None
-               }
+        return self.fields
 
 class TogglProject(TogglObject):
     def __init__(self, fields=None):
