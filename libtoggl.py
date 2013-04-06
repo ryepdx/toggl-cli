@@ -11,7 +11,7 @@ TOGGL_API_VERSION = 'v6'
 KEY_ID          = 'id'
 KEY_NAME        = 'name'
 KEY_DESC        = 'description'
-KEY_PROJECT        = 'project'
+KEY_PROJECT     = 'project'
 KEY_START       = 'start'
 KEY_STOP        = 'stop'
 KEY_DURATION    = 'duration'
@@ -385,7 +385,7 @@ class TogglResponse:
     def data(self):
         return self._data['data']
 
-class TogglObject:
+class TogglObject(object):
     def __init__(self, fields=None):
         if fields is not None:
             self.fields = fields
@@ -419,10 +419,7 @@ class TogglWorkspace(TogglObject):
         return self.fields[KEY_ISADMIN]
 
     def to_json(self):
-        return {
-                 KEY_ID : self.id,
-                 KEY_NAME : self.name
-               }
+        return self.fields
 
 class TogglUser(TogglObject):
     def __init__(self, fields=None):
@@ -472,7 +469,9 @@ class TogglClient(TogglObject):
 
     @workspace.setter
     def workspace(self, value):
-        self.workspace = value
+        self._workspace = value
+        if self._workspace:
+            self.fields[KEY_WORKSPACE] = self._workspace.to_json()
 
     def to_json(self):
         return self.fields
@@ -513,7 +512,7 @@ class TogglProject(TogglObject):
 
     @id.setter
     def id(self, value):
-        self.fields[KEY_PROJID] = value
+        self.fields[KEY_ID] = value
 
     @property
     def workspace(self):
@@ -522,6 +521,8 @@ class TogglProject(TogglObject):
     @workspace.setter
     def workspace(self, value):
         self._workspace = value
+        if self._workspace:
+            self.fields[KEY_WORKSPACE] = self._workspace.to_json()
 
     @property
     def client(self):
@@ -564,22 +565,10 @@ class TogglProject(TogglObject):
         self.fields[KEY_ISACTIVE] = value
 
     def to_json(self):
-        return {
-                    KEY_ID : self.id,
-                    KEY_NAME : self.name,
-                    KEY_BILLABLE : self.billable,
-                    KEY_ESTWKHRS : self.estimated_workhours,
-                    # The api says this field is supported, but it always causes
-                    # an internal server error. Ignore it for now.
-                    #KEY_AUTOCALCWH : self.autocalc_estimated_workhours,
-                    KEY_WORKSPACE : self.workspace.to_json(),
-                    KEY_CLIENT : self.client.to_json() if self.client is not None else None,
-                    KEY_ISACTIVE : self.is_active
-               }
+        return self.fields
 
-class TogglEntry:
+class TogglEntry(object):
     def __init__(self, fields=None):
-        self.ignore_times = False
         if fields is not None:
             self.fields = fields
             if KEY_PROJECT in fields:
@@ -594,6 +583,8 @@ class TogglEntry:
             self.start_time = ''
             self.stop_time = ''
             self.duration = ''
+        self.ignore_start_and_stop = False
+        self.fields[KEY_CREATEDW] = 'toggl-cli'
 
     @property
     def ignore_start_and_stop(self):
@@ -626,6 +617,8 @@ class TogglEntry:
     @project.setter
     def project(self, value):
         self._project = value
+        if self._project:
+            self.fields[KEY_PROJECT] = self._project.to_json()
 
     @property
     def start_time(self):
@@ -656,17 +649,4 @@ class TogglEntry:
            project_name should not have the '@' prefix.
            duration should be an integer seconds.
         """
-        
-        # Create JSON object to send to toggl.
-        data = {
-                KEY_DURATION : self.duration,
-                KEY_BILLABLE : False,
-                KEY_START : self.start_time,
-                KEY_STOP : self.stop_time,
-                KEY_DESC : self.desc,
-                KEY_CREATEDW : 'toggl-cli',
-                KEY_IGNTIMES : self.ignore_start_and_stop,
-                KEY_PROJECT : self.project.to_json() if self.project is not None else None
-               }
-        
-        return data
+        return self.fields
