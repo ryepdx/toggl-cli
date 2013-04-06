@@ -6,6 +6,8 @@ try:
 except:
     from urllib import quote as url_quote
 
+TOGGL_API_VERSION = 'v6'
+
 KEY_ID          = 'id'
 KEY_NAME        = 'name'
 KEY_DESC        = 'description'
@@ -60,8 +62,8 @@ class TogglRawData:
         self._respdata = value
 
 class TogglApi:
-    def __init__(self, url, auth, verbose=False):
-        self.base_url = url
+    def __init__(self, url, auth, api_version=TOGGL_API_VERSION, verbose=False):
+        self.base_url = '%s/%s' % (url, api_version)
         self.auth = auth
         self.verbose = verbose
         self.headers = {'content-type': 'application/json'}

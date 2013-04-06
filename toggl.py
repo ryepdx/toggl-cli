@@ -44,7 +44,7 @@ try:
 except:
     import ConfigParser as configparser
 
-TOGGL_URL = "https://www.toggl.com/api/v6"
+TOGGL_URL = "https://www.toggl.com/api"
 DEFAULT_DATEFMT = '%Y-%m-%d (%A)'
 DEFAULT_ENTRY_DATEFMT = '%Y-%m-%d %H:%M%p'
 DEFAULT_CACHE_PATH = '~/.toggl'
@@ -1011,7 +1011,7 @@ def main():
     global args
     args = parser.parse_args(sys.argv[1:])
     global toggl
-    toggl = TogglApi(TOGGL_URL, auth, args.verbose)
+    toggl = TogglApi(url=TOGGL_URL, auth=auth, verbose=args.verbose)
 
     if args.func(args):
         return 0
