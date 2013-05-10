@@ -999,6 +999,7 @@ def create_default_cfg():
     cfg.set('options', 'entry_datefmt', DEFAULT_ENTRY_DATEFMT)
     cfg.set('options', 'use_mandays', False)
     cfg.set('options', 'show_archived_projects', False)
+    cfg.set('options', 'max_cache_age_days', 0)
     with open(os.path.expanduser('~/.togglrc'), 'w') as cfgfile:
         cfg.write(cfgfile)
 
