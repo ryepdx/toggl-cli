@@ -51,9 +51,10 @@ DEFAULT_CACHE_PATH = '~/.toggl'
 alias_dict = {}
 
 class TogglCache:
-    def __init__(self, cache_path, cache_enabled):
+    def __init__(self, cache_path, cache_enabled, max_age_days=0):
         self._cache_path = os.path.expanduser(cache_path)
         self._enabled = cache_enabled
+        self._max_age_days = max_age_days
 
         if not os.path.exists(self._cache_path):
             os.makedirs(self._cache_path)
@@ -62,8 +63,14 @@ class TogglCache:
     def enabled(self):
         return self._enabled
 
+    def cache_age_expired(self, cachemodtime):
+        return (time.time() - cachemodtime) / (60 * 60 * 24) > self._max_age_days
+
     def read_cache_file(self, path):
         try:
+            if self._max_age_days > 0 and self.cache_age_expired(os.path.getmtime(path)):
+                print("Cache is expired.")
+                return None
             f = open(path, "r")
             data = f.read()
             f.close()
@@ -1031,7 +1038,11 @@ def init_cache():
     cache_path = DEFAULT_CACHE_PATH
     if toggl_cfg.has_option('options', 'cache_path'):
         cache_path = toggl_cfg.get('options', 'cache_path')
-    toggl_cache = TogglCache(cache_path, cache_enabled)
+    max_cache_age = 0
+    if toggl_cfg.has_option('options', 'max_cache_age_days'):
+        max_cache_age = toggl_cfg.get('options', 'max_cache_age_days')
+    toggl_cache = TogglCache(cache_path=cache_path,
+            cache_enabled=cache_enabled, max_age_days=float(max_cache_age))
 
     return True
 
