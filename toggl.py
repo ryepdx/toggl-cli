@@ -308,7 +308,8 @@ def edit_time_entry(args):
     if args.end != None:
         entry.stop_time = parse_time_str(args.end)
 
-    if args.calc_duration != False:
+    # Skip calc if stop time is None - this is the currently active entry.
+    if args.calc_duration != False and entry.stop_time is not None:
         start_time = date_parser.parse(entry.start_time).astimezone(pytz.utc)
         end_time = date_parser.parse(parse_time_str(entry.stop_time)).astimezone(pytz.utc)
 
