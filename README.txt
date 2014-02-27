@@ -1,3 +1,8 @@
+Notice
+------
+
+This project is currently non-functional. It attempts to use the v6 API, which was discontinued in September of 2013. I am in the process of updating it to use the v8 API.
+
 Overview
 --------
 
@@ -51,6 +56,10 @@ Configuration
 
 Move the example config to ~/.togglrc and edit appropriately, or run the
 program which will generate a ~/.togglrc for editing.
+
+If you're like me and you want to use your API token instead of putting your
+username and password in a plaintext file, just set the username in the config
+file to your API token and the password to `api_token`.
 
 Limitations
 -----------
